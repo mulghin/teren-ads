@@ -322,10 +322,10 @@ export class RegionProcess {
       }
 
       const concatPath = `/tmp/teren_ads_region_${this.state.id}.txt`;
-      // ffmpeg concat: use double-quote format; escape backslashes and double-quotes
+      // ffmpeg concat demuxer uses single-quote format; escape single quotes in path
       const lines = files.map(f => {
-        const p = path.resolve(f.filepath).replace(/\\/g, '/').replace(/"/g, '\\"');
-        return `file "${p}"`;
+        const p = path.resolve(f.filepath).replace(/\\/g, '/').replace(/'/g, "'\\''");
+        return `file '${p}'`;
       }).join('\n');
       fs.writeFileSync(concatPath, lines, { mode: 0o600 }); // restrict permissions
 
