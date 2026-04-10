@@ -7,10 +7,12 @@ import PlaylistsPage from './pages/PlaylistsPage';
 import SchedulesPage from './pages/SchedulesPage';
 import SettingsPage from './pages/SettingsPage';
 import LogsPage from './pages/LogsPage';
+import ReportsPage from './pages/ReportsPage';
 
 const navItems = [
   { to: '/', label: 'Дашборд', icon: GridIcon },
   { to: '/regions', label: 'Регіони', icon: RadioIcon },
+  { to: '/reports', label: 'Звіти', icon: ChartIcon },
   { to: '/logs', label: 'Логи', icon: LogIcon },
   { to: '/settings', label: 'Налаштування', icon: SettingsIcon },
 ];
@@ -66,7 +68,7 @@ export default function App() {
         </div>
 
         <div className="px-5 py-3 border-t border-[#1a1a30] text-xs text-[#3a3a5c]">
-          v1.0.0 · Teren FM
+          v1.1.0 · Teren FM
         </div>
       </nav>
 
@@ -87,6 +89,7 @@ export default function App() {
             <Route path="/regions/:id" element={<RegionDetailPage />} />
             <Route path="/playlists" element={<PlaylistsPage />} />
             <Route path="/schedules" element={<SchedulesPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
@@ -130,6 +133,11 @@ function SettingsIcon({ size = 20 }: { size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3"/>
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+  </svg>;
+}
+function ChartIcon({ size = 20 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
   </svg>;
 }
 function HamburgerIcon({ size = 20 }: { size?: number }) {

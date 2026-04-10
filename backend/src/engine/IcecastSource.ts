@@ -4,6 +4,15 @@ import { EventEmitter } from 'events';
 
 type FeedMode = 'main' | 'ad';
 
+export interface FeedFileOptions {
+  crossfadeInEnabled: boolean;
+  crossfadeInSec: number;
+  crossfadeOutSec: number;
+  loudnormEnabled: boolean;
+  loudnormTarget: number;   // LUFS, e.g. -18
+  totalDurationSec: number; // sum of all files in concat
+}
+
 /**
  * Maintains a persistent ICY source connection to Icecast.
  *
@@ -23,6 +32,8 @@ export class IcecastSource extends EventEmitter {
   private stopped = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private relaySourceUrl = '';
+  private backupSourceUrl = '';
+  private usingBackup = false;
 
   constructor(
     private host: string,
@@ -96,7 +107,7 @@ export class IcecastSource extends EventEmitter {
 
   private _write(chunk: Buffer, from: FeedMode) {
     if (!this.socket || !this.connected) return;
-    if (this.mode !== from) return; // not the active source — discard
+    if (this.mode !== from) return;
 
     const now = Date.now();
     if (from === 'main' && this.lastMainWriteMs > 0) {
@@ -114,25 +125,36 @@ export class IcecastSource extends EventEmitter {
 
   /**
    * Start (or restart) the relay from a live HTTP source.
-   * The relay keeps running during ads — data is just discarded until mode='main'.
+   * backupUrl is used if the primary fails repeatedly.
    */
-  feedStream(sourceUrl: string) {
+  feedStream(sourceUrl: string, backupUrl = '') {
     this.relaySourceUrl = sourceUrl;
+    this.backupSourceUrl = backupUrl;
     this._startRelay();
   }
 
-  private _startRelay() {
-    if (this.relayProc) return; // already running
+  private _startRelay(useBackup = false) {
+    if (this.relayProc) return;
     if (this.stopped) return;
 
-    console.log(`[IcecastSource:${this.mount}] relay starting`);
+    const url = (useBackup && this.backupSourceUrl) ? this.backupSourceUrl : this.relaySourceUrl;
+    this.usingBackup = useBackup && !!this.backupSourceUrl;
+
+    if (this.usingBackup) {
+      console.log(`[IcecastSource:${this.mount}] relay starting (BACKUP: ${url})`);
+    } else {
+      console.log(`[IcecastSource:${this.mount}] relay starting`);
+    }
+
+    let failCount = 0;
+
     const proc = spawn('ffmpeg', [
       '-reconnect', '1',
       '-reconnect_at_eof', '1',
       '-reconnect_streamed', '1',
       '-reconnect_delay_max', '2',
-      '-i', this.relaySourceUrl,
-      '-acodec', 'libmp3lame', '-b:a', '320k',
+      '-i', url,
+      '-acodec', 'libmp3lame', '-b:a', '320k', '-ar', '48000',
       '-f', 'mp3',
       'pipe:1',
     ], { stdio: ['ignore', 'pipe', 'ignore'] });
@@ -140,6 +162,7 @@ export class IcecastSource extends EventEmitter {
     this.relayProc = proc;
 
     proc.stdout?.on('data', (chunk: Buffer) => {
+      failCount = 0;
       this._write(chunk, 'main');
     });
 
@@ -147,8 +170,20 @@ export class IcecastSource extends EventEmitter {
       console.log(`[IcecastSource:${this.mount}] relay exit code=${code} signal=${signal}`);
       this.relayProc = null;
       if (!this.stopped) {
-        // Restart immediately — any gap here causes listener silence
-        this._startRelay();
+        failCount++;
+        // If primary fails multiple times and we have a backup, try backup
+        const tryBackup = !useBackup && failCount >= 3 && !!this.backupSourceUrl;
+        if (tryBackup) {
+          console.log(`[IcecastSource:${this.mount}] primary failed ${failCount}x — switching to backup`);
+          this.emit('source_switch', { from: this.relaySourceUrl, to: this.backupSourceUrl });
+          setTimeout(() => this._startRelay(true), 1000);
+        } else if (useBackup) {
+          // Try to return to primary occasionally
+          const tryPrimary = Math.random() < 0.25; // 25% chance each restart
+          setTimeout(() => this._startRelay(!tryPrimary), 2000);
+        } else {
+          setTimeout(() => this._startRelay(false), 1000);
+        }
       }
     });
   }
@@ -160,11 +195,10 @@ export class IcecastSource extends EventEmitter {
    * Relay keeps running in the background so the return to main is instant and seamless.
    * Resolves when the file finishes (finished=true) or is killed (finished=false).
    */
-  feedFile(concatPath: string, crossfadeSec: number): Promise<{ finished: boolean }> {
+  feedFile(concatPath: string, opts: FeedFileOptions): Promise<{ finished: boolean }> {
     return new Promise((resolve) => {
       if (this.stopped) { resolve({ finished: false }); return; }
 
-      // Kill any previous ad
       if (this.adProc) {
         this.adProc.kill('SIGKILL');
         this.adProc = null;
@@ -172,10 +206,24 @@ export class IcecastSource extends EventEmitter {
 
       this.mode = 'ad';
 
+      // Build audio filter chain
+      const filters: string[] = [];
+      if (opts.loudnormEnabled) {
+        filters.push(`loudnorm=I=${opts.loudnormTarget}:TP=-1.5:LRA=11`);
+      }
+      if (opts.crossfadeInEnabled && opts.crossfadeInSec > 0) {
+        filters.push(`afade=t=in:st=0:d=${opts.crossfadeInSec}`);
+      }
+      if (opts.crossfadeOutSec > 0 && opts.totalDurationSec > opts.crossfadeOutSec) {
+        const outStart = Math.max(0, opts.totalDurationSec - opts.crossfadeOutSec);
+        filters.push(`afade=t=out:st=${outStart.toFixed(2)}:d=${opts.crossfadeOutSec}`);
+      }
+      const afArg = filters.length ? filters.join(',') : 'anull';
+
       const proc = spawn('ffmpeg', [
         '-re',
         '-f', 'concat', '-safe', '0', '-i', concatPath,
-        '-af', `afade=t=in:st=0:d=${crossfadeSec}`,
+        '-af', afArg,
         '-acodec', 'libmp3lame', '-b:a', '320k', '-ar', '48000',
         '-f', 'mp3',
         'pipe:1',
@@ -189,12 +237,11 @@ export class IcecastSource extends EventEmitter {
         this._write(chunk, 'ad');
       });
 
-      proc.stderr?.on('data', () => {}); // drain stderr to avoid pipe buffer blocking
+      proc.stderr?.on('data', () => {}); // drain to prevent pipe blocking
 
       proc.on('exit', (code, signal) => {
-        console.log(`[IcecastSource:${this.mount}] ad exit code=${code} signal=${signal} bytesWritten=${adBytesWritten} socketOk=${this.connected}`);
+        console.log(`[IcecastSource:${this.mount}] ad exit code=${code} signal=${signal} bytes=${adBytesWritten} socketOk=${this.connected}`);
         if (this.adProc === proc) this.adProc = null;
-        // Switch back to relay instantly — relay is already running and warmed up
         this.mode = 'main';
         resolve({ finished: signal !== 'SIGKILL' });
       });
@@ -210,6 +257,10 @@ export class IcecastSource extends EventEmitter {
       this.adProc = null;
     }
     this.mode = 'main';
+  }
+
+  get isUsingBackup(): boolean {
+    return this.usingBackup;
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────

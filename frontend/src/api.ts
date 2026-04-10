@@ -52,6 +52,35 @@ export const api = {
   updateSchedule: (id: number, data: any) => req<any>('PUT', `/schedules/${id}`, data),
   deleteSchedule: (id: number) => req<any>('DELETE', `/schedules/${id}`),
 
+  // Item weight
+  updateItemWeight: (playlistId: number, itemId: number, weight: number) =>
+    req<any>('PUT', `/playlists/${playlistId}/items/${itemId}`, { weight }),
+
+  // Reports
+  getCampaignReport: (from?: string, to?: string, region_id?: number) => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (region_id) params.set('region_id', String(region_id));
+    return req<any>('GET', `/reports/campaigns?${params}`);
+  },
+  getRegionStats: (from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    return req<any>('GET', `/reports/regions?${params}`);
+  },
+  getPlayLog: (params: { from?: string; to?: string; region_id?: number; playlist_id?: number }) => {
+    const p = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined) p.set(k, String(v)); });
+    return req<any[]>('GET', `/reports/plays?${p}`);
+  },
+  getMediaPlan: () => req<any[]>('GET', '/reports/mediaplan'),
+  getMediaPlanXlsx: () => `${BASE}/reports/mediaplan/xlsx`,
+
+  // Status
+  getStatus: () => req<any>('GET', '/status'),
+
   // Logs
   getLogs: (limit = 200) => req<any[]>('GET', `/logs?limit=${limit}`),
   getSystemLogs: (limit = 300) => req<any[]>('GET', `/logs/system?limit=${limit}`),

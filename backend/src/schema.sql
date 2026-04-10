@@ -10,11 +10,18 @@ INSERT INTO settings (key, value) VALUES
   ('icecast_host', 'localhost'),
   ('icecast_port', '8000'),
   ('icecast_source_password', 'hackme'),
+  ('icecast_admin_password', 'hackme'),
   ('tone_start_hz', '17500'),
   ('tone_stop_hz', '18500'),
   ('tone_duration_ms', '500'),
   ('tone_detection_enabled', 'true'),
-  ('default_crossfade_sec', '3')
+  ('default_crossfade_sec', '3'),
+  ('backup_source_url', ''),
+  ('silence_threshold_db', '-50'),
+  ('silence_duration_sec', '10'),
+  ('silence_alerts_enabled', 'true'),
+  ('webhook_url', ''),
+  ('webhook_secret', '')
 ON CONFLICT (key) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS regions (
@@ -75,7 +82,9 @@ CREATE TABLE IF NOT EXISTS ad_logs (
   trigger_type VARCHAR(20),
   start_time TIMESTAMPTZ DEFAULT NOW(),
   end_time TIMESTAMPTZ,
-  status VARCHAR(20) DEFAULT 'running'
+  status VARCHAR(20) DEFAULT 'running',
+  duration_sec FLOAT,
+  file_count INT DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS system_logs (
@@ -106,3 +115,51 @@ CREATE TABLE IF NOT EXISTS region_schedules (
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Audio quality per region
+DO $$ BEGIN
+  ALTER TABLE regions ADD COLUMN crossfade_in_enabled BOOLEAN DEFAULT TRUE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE regions ADD COLUMN crossfade_out_sec INT DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE regions ADD COLUMN loudnorm_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE regions ADD COLUMN loudnorm_target FLOAT DEFAULT -18;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- Campaign management on playlists
+DO $$ BEGIN
+  ALTER TABLE playlists ADD COLUMN start_date DATE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE playlists ADD COLUMN end_date DATE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE playlists ADD COLUMN max_plays_per_day INT DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE playlists ADD COLUMN max_plays_per_week INT DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- Weighted rotation for playlist items
+DO $$ BEGIN
+  ALTER TABLE playlist_items ADD COLUMN weight INT DEFAULT 1;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- Ad log enhancements
+DO $$ BEGIN
+  ALTER TABLE ad_logs ADD COLUMN duration_sec FLOAT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE ad_logs ADD COLUMN file_count INT DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;

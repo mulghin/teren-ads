@@ -20,7 +20,6 @@ class RegionManager {
     const res = await pool.query(`SELECT * FROM regions ORDER BY id`);
     const dbIds = new Set(res.rows.map((r: any) => r.id));
 
-    // Stop removed regions
     for (const [id, rp] of this.regions) {
       if (!dbIds.has(id)) {
         await rp.stop();
@@ -28,12 +27,11 @@ class RegionManager {
       }
     }
 
-    // Add new / update existing
     for (const row of res.rows) {
       if (!this.regions.has(row.id)) {
         this.regions.set(row.id, new RegionProcess(row));
       } else {
-        this.regions.get(row.id)!.updateConfig(row.crossfade_sec, row.return_mode, row.return_timer_sec);
+        this.regions.get(row.id)!.updateConfig(row);
       }
     }
   }
@@ -70,27 +68,14 @@ class RegionManager {
     await rp.stop();
   }
 
-  async restartMainRegions() {
-    for (const rp of this.regions.values()) {
-      if (rp.state.mode === 'main') {
-        rp.startMain().catch(e =>
-          console.error(`[RegionManager] restartMain failed for ${rp.state.name}:`, e)
-        );
-      }
-    }
-  }
-
-  // Called by tone detector
   async handleTone(type: 'start' | 'stop') {
     if (type === 'start') {
       const now = new Date();
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
-      // JS getDay(): 0=Sun,1=Mon..6=Sat → convert to 1=Mon..7=Sun
       const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
 
       for (const rp of this.regions.values()) {
         if (rp.state.mode === 'main') {
-          // 1. Check time-window schedules for this region
           const schedRes = await pool.query(
             `SELECT * FROM region_schedules WHERE region_id=$1 AND is_active=TRUE`,
             [rp.state.id]
@@ -108,17 +93,16 @@ class RegionManager {
           }
 
           if (matched) {
-            if (rp.state.mode !== 'main') continue; // re-check after async DB query
+            if (rp.state.mode !== 'main') continue;
             await rp.startAd(matched.playlist_id, 'tone', matched.filler_playlist_id);
           } else {
-            // 2. Fallback: highest-priority region_assignment
             const res = await pool.query(
               `SELECT ra.playlist_id, ra.filler_playlist_id FROM region_assignments ra
                WHERE ra.region_id=$1 AND ra.active=TRUE ORDER BY ra.priority DESC LIMIT 1`,
               [rp.state.id]
             );
             if (res.rows[0]) {
-              if (rp.state.mode !== 'main') continue; // re-check after async DB query
+              if (rp.state.mode !== 'main') continue;
               await rp.startAd(res.rows[0].playlist_id, 'tone', res.rows[0].filler_playlist_id);
             }
           }
@@ -127,8 +111,6 @@ class RegionManager {
     } else {
       for (const rp of this.regions.values()) {
         if (rp.state.mode === 'ad' || rp.state.mode === 'filler') {
-          // Only allow STOP tone to interrupt if returnMode is not playlist_end
-          // (playlist_end means "play the full ad, don't cut it short")
           if (rp.state.returnMode === 'playlist_end') continue;
           await rp.returnToMain('tone');
         }

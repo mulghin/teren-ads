@@ -37,11 +37,18 @@ router.get('/:id', async (req, res) => {
 
 // POST create region
 router.post('/', async (req, res) => {
-  const { name, slug, icecast_mount, crossfade_sec = 3, return_mode = 'signal', return_timer_sec = 0 } = req.body;
+  const {
+    name, slug, icecast_mount,
+    crossfade_sec = 1, crossfade_in_enabled = true, crossfade_out_sec = 0,
+    loudnorm_enabled = false, loudnorm_target = -18,
+    return_mode = 'signal', return_timer_sec = 0,
+  } = req.body;
   const r = await pool.query(
-    `INSERT INTO regions(name,slug,icecast_mount,crossfade_sec,return_mode,return_timer_sec)
-     VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [name, slug, icecast_mount, crossfade_sec, return_mode, return_timer_sec]
+    `INSERT INTO regions(name,slug,icecast_mount,crossfade_sec,crossfade_in_enabled,crossfade_out_sec,
+      loudnorm_enabled,loudnorm_target,return_mode,return_timer_sec)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [name, slug, icecast_mount, crossfade_sec, crossfade_in_enabled, crossfade_out_sec,
+     loudnorm_enabled, loudnorm_target, return_mode, return_timer_sec]
   );
   await regionManager.reload();
   res.json(r.rows[0]);
@@ -50,11 +57,18 @@ router.post('/', async (req, res) => {
 // PUT update region
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const { name, slug, icecast_mount, crossfade_sec, return_mode, return_timer_sec, enabled } = req.body;
+  const {
+    name, slug, icecast_mount,
+    crossfade_sec, crossfade_in_enabled, crossfade_out_sec,
+    loudnorm_enabled, loudnorm_target,
+    return_mode, return_timer_sec, enabled,
+  } = req.body;
   const r = await pool.query(
     `UPDATE regions SET name=$1,slug=$2,icecast_mount=$3,crossfade_sec=$4,
-     return_mode=$5,return_timer_sec=$6,enabled=$7 WHERE id=$8 RETURNING *`,
-    [name, slug, icecast_mount, crossfade_sec, return_mode, return_timer_sec, enabled, id]
+     crossfade_in_enabled=$5,crossfade_out_sec=$6,loudnorm_enabled=$7,loudnorm_target=$8,
+     return_mode=$9,return_timer_sec=$10,enabled=$11 WHERE id=$12 RETURNING *`,
+    [name, slug, icecast_mount, crossfade_sec, crossfade_in_enabled, crossfade_out_sec,
+     loudnorm_enabled, loudnorm_target, return_mode, return_timer_sec, enabled, id]
   );
   await regionManager.reload();
   res.json(r.rows[0]);
@@ -131,7 +145,9 @@ router.delete('/:id/assignments/:aid', async (req, res) => {
 // Logs
 router.get('/:id/logs', async (req, res) => {
   const r = await pool.query(
-    `SELECT * FROM ad_logs WHERE region_id=$1 ORDER BY start_time DESC LIMIT 100`,
+    `SELECT al.*, p.name as playlist_name FROM ad_logs al
+     LEFT JOIN playlists p ON p.id=al.playlist_id
+     WHERE al.region_id=$1 ORDER BY al.start_time DESC LIMIT 100`,
     [req.params.id]
   );
   res.json(r.rows);
