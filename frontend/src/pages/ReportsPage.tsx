@@ -20,29 +20,40 @@ export default function ReportsPage() {
   const [regionStats, setRegionStats] = useState<any>(null);
   const [plays, setPlays] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const showError = (msg: string) => { setError(msg); setTimeout(() => setError(null), 4000); };
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       if (tab === 'campaigns') setCampaigns(await api.getCampaignReport(from, to));
       else if (tab === 'regions') setRegionStats(await api.getRegionStats(from, to));
       else setPlays(await api.getPlayLog({ from, to }));
-    } finally { setLoading(false); }
+    } catch (e: any) { showError(e.message); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, [tab, from, to]);
 
+  const downloadXlsx = async () => {
+    try { await api.downloadMediaPlanXlsx(); }
+    catch (e: any) { showError(e.message); }
+  };
+
   return (
     <div className="p-4 sm:p-6">
+      {error && (
+        <div className="fixed top-4 right-4 z-50 bg-red-500/15 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-xl shadow-lg max-w-sm">
+          {error}
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="page-title">Звіти</h1>
-        <a
-          href={api.getMediaPlanXlsx()}
-          download
-          className="btn-primary text-sm py-2 px-4"
-        >
+        <button onClick={downloadXlsx} className="btn-primary text-sm py-2 px-4">
           ↓ Медіаплан Excel
-        </a>
+        </button>
       </div>
 
       {/* Tabs */}

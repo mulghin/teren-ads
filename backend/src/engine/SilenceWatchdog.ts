@@ -99,6 +99,8 @@ export class SilenceWatchdog extends EventEmitter {
     this.running = false;
     this.proc?.kill('SIGKILL');
     this.proc = null;
+    this.silentSince = null;
+    this.alerted = false;
   }
 
   async restart() {

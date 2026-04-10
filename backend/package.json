@@ -1,6 +1,6 @@
 {
   "name": "teren-ads-backend",
-  "version": "1.1.0",
+  "version": "1.7.0",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",

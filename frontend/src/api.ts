@@ -82,6 +82,15 @@ export const api = {
   },
   getMediaPlan: () => req<any[]>('GET', '/reports/mediaplan'),
   getMediaPlanXlsx: () => `${BASE}/reports/mediaplan/xlsx`,
+  downloadMediaPlanXlsx: async () => {
+    const res = await fetch(`${BASE}/reports/mediaplan/xlsx`, { headers: authHeaders() });
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'mediaplan.xlsx'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
 
   // Status
   getStatus: () => req<any>('GET', '/status'),

@@ -14,12 +14,28 @@ const empty = {
   crossfade_sec: 3, return_mode: 'signal', return_timer_sec: 0, enabled: true,
 };
 
+function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="bg-[#0f0f1e] border border-[#1a1a30] rounded-2xl p-6 w-80 shadow-2xl">
+        <p className="text-white text-sm mb-6 leading-relaxed">{message}</p>
+        <div className="flex gap-3 justify-end">
+          <button onClick={onCancel} className="px-4 py-2 rounded-xl text-xs text-[#8888aa] hover:text-white hover:bg-[#1a1a30] transition-colors">Скасувати</button>
+          <button onClick={onConfirm} className="px-4 py-2 rounded-xl text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300 transition-colors">Видалити</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function RegionsPage() {
   const navigate = useNavigate();
   const [regions, setRegions] = useState<any[]>([]);
   const [modal, setModal] = useState<null | 'create' | number>(null);
   const [form, setForm] = useState({ ...empty });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const load = async () => setRegions(await api.getRegions());
   useEffect(() => { load(); }, []);
@@ -34,16 +50,26 @@ export default function RegionsPage() {
 
   const save = async () => {
     setSaving(true);
+    setError(null);
     try {
       if (modal === 'create') await api.createRegion(form);
       else await api.updateRegion(modal as number, form);
       setModal(null); await load();
+    } catch (e: any) {
+      setError(e.message);
+      setTimeout(() => setError(null), 4000);
     } finally { setSaving(false); }
   };
 
-  const del = async (id: number) => {
-    if (!confirm('Видалити регіон?')) return;
-    await api.deleteRegion(id); await load();
+  const del = (id: number) => {
+    setConfirm({
+      message: 'Видалити регіон? Це також видалить всі пов\'язані розклади та призначення.',
+      onConfirm: async () => {
+        setConfirm(null);
+        try { await api.deleteRegion(id); await load(); }
+        catch (e: any) { setError(e.message); setTimeout(() => setError(null), 4000); }
+      },
+    });
   };
 
   const f = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
@@ -51,6 +77,12 @@ export default function RegionsPage() {
 
   return (
     <div className="p-4 sm:p-6">
+      {error && (
+        <div className="fixed top-4 right-4 z-50 bg-red-500/15 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-xl shadow-lg max-w-sm">
+          {error}
+        </div>
+      )}
+      {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
       <div className="page-header">
         <h1 className="page-title">Регіони</h1>
         <button onClick={openCreate} className="btn-primary">+ Додати</button>

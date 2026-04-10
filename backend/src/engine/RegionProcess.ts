@@ -152,12 +152,13 @@ export class RegionProcess {
 
   // ── Source lifecycle ───────────────────────────────────────────────────────
 
-  private async ensureSource(): Promise<IcecastSource> {
+  private async ensureSource(retries = 0): Promise<IcecastSource> {
     if (this.source) return this.source;
     // Guard against concurrent calls (e.g. startMain + startAd racing)
     if (this.sourceConnecting) {
+      if (retries >= 25) throw new Error('ensureSource timeout: source connection taking too long');
       await new Promise(r => setTimeout(r, 200));
-      return this.ensureSource();
+      return this.ensureSource(retries + 1);
     }
     this.sourceConnecting = true;
     try {
