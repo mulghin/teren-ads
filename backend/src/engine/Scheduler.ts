@@ -68,6 +68,11 @@ class Scheduler {
     }
   }
 
+  stop() {
+    this.tasks.forEach(t => t.stop());
+    this.tasks = [];
+  }
+
   private parseDays(days: string): string {
     return days.split(',')
       .map(d => DAY_MAP[d.trim().toLowerCase()] ?? d)

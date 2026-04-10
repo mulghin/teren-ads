@@ -22,6 +22,10 @@ export async function fireWebhook(payload: WebhookPayload): Promise<void> {
     const secret = await getSetting('webhook_secret');
 
     const parsed = new URL(webhookUrl);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      console.warn(`[Webhook] Blocked non-HTTP URL protocol: ${parsed.protocol}`);
+      return;
+    }
     const mod = parsed.protocol === 'https:' ? https : http;
 
     await new Promise<void>((resolve, reject) => {

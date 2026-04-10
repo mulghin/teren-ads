@@ -73,9 +73,11 @@ export class SilenceWatchdog extends EventEmitter {
   }
 
   private _checkSilenceTimeout() {
+    const capturedSince = this.silentSince;
+    if (!capturedSince) return;
     setTimeout(() => {
-      if (!this.silentSince || this.alerted) return;
-      const elapsed = (Date.now() - this.silentSince) / 1000;
+      if (this.silentSince !== capturedSince || this.alerted) return;
+      const elapsed = (Date.now() - capturedSince) / 1000;
       if (elapsed >= this.durationSec) {
         this.alerted = true;
         const msg = `🔇 Тиша в ефірі вже ${Math.round(elapsed)}с! Перевірте джерело: ${this.sourceUrl}`;

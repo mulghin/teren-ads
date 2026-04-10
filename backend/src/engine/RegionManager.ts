@@ -118,6 +118,13 @@ class RegionManager {
     }
   }
 
+  stop() {
+    for (const rp of this.regions.values()) {
+      rp.stop();
+    }
+    this.regions.clear();
+  }
+
   getStatus() {
     return this.getAll().map(rp => ({
       id: rp.state.id,

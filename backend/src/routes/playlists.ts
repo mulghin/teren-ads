@@ -84,6 +84,15 @@ router.put('/:id', async (req, res) => {
 
 // DELETE playlist
 router.delete('/:id', async (req, res) => {
+  // Prevent deleting a playlist that is currently playing
+  const active = await pool.query(
+    `SELECT 1 FROM ad_logs WHERE playlist_id=$1 AND ended_at IS NULL LIMIT 1`,
+    [req.params.id]
+  );
+  if (active.rows.length > 0) {
+    return res.status(409).json({ error: 'Playlist is currently playing — stop playback first' });
+  }
+
   const dir = path.join(UPLOADS_DIR, req.params.id);
   if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true });
   await pool.query(`DELETE FROM playlists WHERE id=$1`, [req.params.id]);

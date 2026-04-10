@@ -15,8 +15,15 @@ const ALLOWED_SETTINGS = [
   'webhook_url', 'webhook_secret',
 ];
 
+// These keys are write-only: returned as '***' when set, never in plaintext
+const SENSITIVE_KEYS = new Set(['icecast_source_password', 'icecast_admin_password', 'webhook_secret']);
+
 router.get('/', async (req, res) => {
-  res.json(await getAllSettings());
+  const all = await getAllSettings();
+  for (const key of SENSITIVE_KEYS) {
+    if (all[key]) all[key] = '***';
+  }
+  res.json(all);
 });
 
 router.put('/', async (req, res) => {
@@ -24,7 +31,9 @@ router.put('/', async (req, res) => {
   const prevSourceUrl = await getSetting('source_url');
 
   for (const key of ALLOWED_SETTINGS) {
-    if (body[key] !== undefined) await setSetting(key, body[key]);
+    if (body[key] !== undefined && !(SENSITIVE_KEYS.has(key) && body[key] === '***')) {
+      await setSetting(key, body[key]);
+    }
   }
 
   await toneDetector.restart();

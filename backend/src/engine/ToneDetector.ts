@@ -3,8 +3,10 @@ import { getSetting } from '../db';
 import { regionManager } from './RegionManager';
 
 class ToneDetector {
-  private proc: ChildProcess | null = null;
+  private procs: ChildProcess[] = []; // track ALL spawned processes
   private running = false;
+  private startCooldownTimer: NodeJS.Timeout | null = null;
+  private stopCooldownTimer: NodeJS.Timeout | null = null;
   private startCooldown = false;
   private stopCooldown = false;
 
@@ -21,94 +23,78 @@ class ToneDetector {
     const durationMs = parseInt(await getSetting('tone_duration_ms') || '500');
     const durationSec = durationMs / 1000;
 
-    // FFmpeg: bandpass at two frequencies, detect amplitude spikes
-    // We run two separate analysis passes using lavfi
-    const filterStart = `asplit=2[a][b],[a]bandpass=f=${startHz}:width_type=h:w=200,ametadata=mode=print:key=lavfi.astats.Overall.Peak_level[c],[b]bandpass=f=${stopHz}:width_type=h:w=200,ametadata=mode=print:key=lavfi.astats.Overall.Peak_level[d],[c][d]amerge`;
-
-    const args = [
-      '-reconnect', '1',
-      '-reconnect_at_eof', '1',
-      '-reconnect_streamed', '1',
-      '-i', sourceUrl,
-      '-af', [
-        `asplit=2[s][st]`,
-        `[s]bandpass=f=${startHz}:width_type=h:w=300,astats=metadata=1:reset=1,ametadata=mode=print:file=-:key=lavfi.astats.Overall.RMS_level[start_out]`,
-        `[st]bandpass=f=${stopHz}:width_type=h:w=300,astats=metadata=1:reset=1,ametadata=mode=print:file=-:key=lavfi.astats.Overall.RMS_level[stop_out]`,
-        `[start_out]anull`,
-        `[stop_out]anull`,
-      ].join(';'),
-      '-f', 'null', '-',
-    ];
-
-    // Simplified approach: use silencedetect on bandpassed signal
-    this.startSimpleDetector(sourceUrl, startHz, stopHz, durationSec);
+    this.running = true;
+    this._startDetectors(sourceUrl, startHz, stopHz, durationSec);
   }
 
-  private startSimpleDetector(sourceUrl: string, startHz: number, stopHz: number, durationSec: number) {
-    this.running = true;
-    const threshold = -30; // dB above noise floor to detect tone
+  private _startDetectors(sourceUrl: string, startHz: number, stopHz: number, durationSec: number) {
+    const threshold = -30;
 
-    // Detector for START tone
-    const detectStart = () => {
+    // START tone detector
+    const spawnDetector = (hz: number, type: 'start' | 'stop') => {
       const proc = spawn('ffmpeg', [
         '-reconnect', '1', '-reconnect_at_eof', '1', '-reconnect_streamed', '1',
         '-i', sourceUrl,
-        '-af', `bandpass=f=${startHz}:width_type=h:w=200,silencedetect=n=${threshold}dB:d=${durationSec}`,
+        '-af', `bandpass=f=${hz}:width_type=h:w=200,silencedetect=n=${threshold}dB:d=${durationSec}`,
         '-f', 'null', '-',
       ], { stdio: ['ignore', 'ignore', 'pipe'] });
 
+      this.procs.push(proc);
+
       proc.stderr?.on('data', (data: Buffer) => {
         const text = data.toString();
-        if (text.includes('silence_end') && !this.startCooldown) {
-          this.handleTone('start');
+        if (text.includes('silence_end')) {
+          if (type === 'start' && !this.startCooldown) this._handleTone('start');
+          if (type === 'stop' && !this.stopCooldown) this._handleTone('stop');
         }
       });
 
       proc.on('exit', () => {
-        if (this.running) setTimeout(detectStart, 2000);
+        this.procs = this.procs.filter(p => p !== proc);
+        if (this.running) {
+          setTimeout(() => {
+            if (this.running) spawnDetector(hz, type);
+          }, 2000);
+        }
       });
 
-      this.proc = proc;
+      return proc;
     };
 
-    // Detector for STOP tone
-    const detectStop = spawn('ffmpeg', [
-      '-reconnect', '1', '-reconnect_at_eof', '1', '-reconnect_streamed', '1',
-      '-i', sourceUrl,
-      '-af', `bandpass=f=${stopHz}:width_type=h:w=200,silencedetect=n=${threshold}dB:d=${durationSec}`,
-      '-f', 'null', '-',
-    ], { stdio: ['ignore', 'ignore', 'pipe'] });
-
-    detectStop.stderr?.on('data', (data: Buffer) => {
-      const text = data.toString();
-      if (text.includes('silence_end') && !this.stopCooldown) {
-        this.handleTone('stop');
-      }
-    });
-
-    detectStop.on('exit', () => {
-      if (this.running) setTimeout(() => this.startSimpleDetector(sourceUrl, startHz, stopHz, durationSec), 2000);
-    });
-
-    detectStart();
+    spawnDetector(startHz, 'start');
+    spawnDetector(stopHz, 'stop');
   }
 
-  private handleTone(type: 'start' | 'stop') {
+  private _handleTone(type: 'start' | 'stop') {
     if (type === 'start') {
       this.startCooldown = true;
-      setTimeout(() => { this.startCooldown = false; }, 5000);
+      if (this.startCooldownTimer) clearTimeout(this.startCooldownTimer);
+      this.startCooldownTimer = setTimeout(() => {
+        this.startCooldown = false;
+        this.startCooldownTimer = null;
+      }, 5000);
     } else {
       this.stopCooldown = true;
-      setTimeout(() => { this.stopCooldown = false; }, 5000);
+      if (this.stopCooldownTimer) clearTimeout(this.stopCooldownTimer);
+      this.stopCooldownTimer = setTimeout(() => {
+        this.stopCooldown = false;
+        this.stopCooldownTimer = null;
+      }, 5000);
     }
+
     console.log(`[ToneDetector] Detected ${type.toUpperCase()} tone`);
     regionManager.handleTone(type).catch(console.error);
   }
 
   stop() {
     this.running = false;
-    this.proc?.kill();
-    this.proc = null;
+    if (this.startCooldownTimer) { clearTimeout(this.startCooldownTimer); this.startCooldownTimer = null; }
+    if (this.stopCooldownTimer) { clearTimeout(this.stopCooldownTimer); this.stopCooldownTimer = null; }
+    // Kill ALL tracked processes
+    for (const p of this.procs) {
+      try { p.kill('SIGKILL'); } catch {}
+    }
+    this.procs = [];
   }
 
   async restart() {

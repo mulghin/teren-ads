@@ -9,8 +9,8 @@ export interface FeedFileOptions {
   crossfadeInSec: number;
   crossfadeOutSec: number;
   loudnormEnabled: boolean;
-  loudnormTarget: number;   // LUFS, e.g. -18
-  totalDurationSec: number; // sum of all files in concat
+  loudnormTarget: number;
+  totalDurationSec: number;
 }
 
 /**
@@ -20,12 +20,12 @@ export interface FeedFileOptions {
  *  - relay:  always running, reads the live HTTP source stream
  *  - ad:     only during ads, reads a local concat file at -re speed
  *
- * Only one of them writes to the Icecast socket at a time (controlled by `mode`).
- * The relay is always warmed up — returning from ad to main is instant and seamless.
+ * Only one writes to the Icecast socket at a time (controlled by `mode`).
  */
 export class IcecastSource extends EventEmitter {
   private socket: net.Socket | null = null;
   private relayProc: ChildProcess | null = null;
+  private relayStarting = false; // guard against concurrent relay spawns
   private adProc: ChildProcess | null = null;
   private mode: FeedMode = 'main';
   private connected = false;
@@ -42,6 +42,8 @@ export class IcecastSource extends EventEmitter {
     private password: string,
   ) {
     super();
+    // Prevent unhandled EventEmitter errors from crashing the process
+    this.on('error', () => {});
   }
 
   // ── ICY connection ─────────────────────────────────────────────────────────
@@ -50,7 +52,18 @@ export class IcecastSource extends EventEmitter {
     if (this.stopped) return;
     return new Promise((resolve, reject) => {
       const socket = new net.Socket();
-      const timeout = setTimeout(() => { socket.destroy(); reject(new Error('connect timeout')); }, 10_000);
+      let settled = false;
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        fn();
+      };
+
+      const timeout = setTimeout(() => {
+        socket.destroy();
+        settle(() => reject(new Error('Icecast connect timeout')));
+      }, 10_000);
 
       socket.connect(this.port, this.host, () => {
         const auth = Buffer.from(`source:${this.password}`).toString('base64');
@@ -65,20 +78,25 @@ export class IcecastSource extends EventEmitter {
       });
 
       socket.once('data', (data) => {
-        clearTimeout(timeout);
         if (data.toString().includes('200 OK')) {
           this.socket = socket;
           this.connected = true;
           socket.on('error', () => this._onSocketDrop());
           socket.on('close', () => { if (this.connected) this._onSocketDrop(); });
-          resolve();
+          settle(() => resolve());
         } else {
           socket.destroy();
-          reject(new Error(`Icecast rejected ${this.mount}: ${data.toString().slice(0, 80)}`));
+          settle(() => reject(new Error(`Icecast rejected ${this.mount}: ${data.toString().slice(0, 80)}`)));
         }
       });
 
-      socket.on('error', (e) => { clearTimeout(timeout); reject(e); });
+      socket.on('error', (e) => {
+        settle(() => reject(e));
+      });
+
+      socket.once('close', () => {
+        settle(() => reject(new Error('Socket closed before ICY handshake')));
+      });
     });
   }
 
@@ -101,7 +119,7 @@ export class IcecastSource extends EventEmitter {
     }, ms);
   }
 
-  // ── Internal: write chunk to socket (from the currently active source) ─────
+  // ── Internal: write chunk to socket ───────────────────────────────────────
 
   private lastMainWriteMs = 0;
 
@@ -110,9 +128,9 @@ export class IcecastSource extends EventEmitter {
     if (this.mode !== from) return;
 
     const now = Date.now();
-    if (from === 'main' && this.lastMainWriteMs > 0) {
+    if (from === 'main' && this.mode === 'main' && this.lastMainWriteMs > 0) {
       const gap = now - this.lastMainWriteMs;
-      if (gap > 300) {
+      if (gap > 500) {
         console.log(`[IcecastSource:${this.mount}] relay data gap ${gap}ms`);
       }
     }
@@ -123,28 +141,23 @@ export class IcecastSource extends EventEmitter {
 
   // ── Relay (always warm) ────────────────────────────────────────────────────
 
-  /**
-   * Start (or restart) the relay from a live HTTP source.
-   * backupUrl is used if the primary fails repeatedly.
-   */
   feedStream(sourceUrl: string, backupUrl = '') {
     this.relaySourceUrl = sourceUrl;
     this.backupSourceUrl = backupUrl;
-    this._startRelay();
+    this._startRelay(false);
   }
 
-  private _startRelay(useBackup = false) {
-    if (this.relayProc) return;
+  private _startRelay(useBackup: boolean) {
+    // Guard: prevent concurrent relay spawns
+    if (this.relayStarting || this.relayProc) return;
     if (this.stopped) return;
+
+    this.relayStarting = true;
 
     const url = (useBackup && this.backupSourceUrl) ? this.backupSourceUrl : this.relaySourceUrl;
     this.usingBackup = useBackup && !!this.backupSourceUrl;
 
-    if (this.usingBackup) {
-      console.log(`[IcecastSource:${this.mount}] relay starting (BACKUP: ${url})`);
-    } else {
-      console.log(`[IcecastSource:${this.mount}] relay starting`);
-    }
+    console.log(`[IcecastSource:${this.mount}] relay starting${this.usingBackup ? ' (BACKUP)' : ''}`);
 
     let failCount = 0;
 
@@ -160,6 +173,7 @@ export class IcecastSource extends EventEmitter {
     ], { stdio: ['ignore', 'pipe', 'ignore'] });
 
     this.relayProc = proc;
+    this.relayStarting = false;
 
     proc.stdout?.on('data', (chunk: Buffer) => {
       failCount = 0;
@@ -168,21 +182,19 @@ export class IcecastSource extends EventEmitter {
 
     proc.on('exit', (code, signal) => {
       console.log(`[IcecastSource:${this.mount}] relay exit code=${code} signal=${signal}`);
-      this.relayProc = null;
+      if (this.relayProc === proc) this.relayProc = null;
+      this.relayStarting = false;
+
       if (!this.stopped) {
         failCount++;
-        // If primary fails multiple times and we have a backup, try backup
         const tryBackup = !useBackup && failCount >= 3 && !!this.backupSourceUrl;
         if (tryBackup) {
           console.log(`[IcecastSource:${this.mount}] primary failed ${failCount}x — switching to backup`);
           this.emit('source_switch', { from: this.relaySourceUrl, to: this.backupSourceUrl });
           setTimeout(() => this._startRelay(true), 1000);
-        } else if (useBackup) {
-          // Try to return to primary occasionally
-          const tryPrimary = Math.random() < 0.25; // 25% chance each restart
-          setTimeout(() => this._startRelay(!tryPrimary), 2000);
         } else {
-          setTimeout(() => this._startRelay(false), 1000);
+          const returnToPrimary = useBackup && Math.random() < 0.25;
+          setTimeout(() => this._startRelay(returnToPrimary ? false : useBackup), 2000);
         }
       }
     });
@@ -190,11 +202,6 @@ export class IcecastSource extends EventEmitter {
 
   // ── Ad feed ───────────────────────────────────────────────────────────────
 
-  /**
-   * Switch to playing a local concat file.
-   * Relay keeps running in the background so the return to main is instant and seamless.
-   * Resolves when the file finishes (finished=true) or is killed (finished=false).
-   */
   feedFile(concatPath: string, opts: FeedFileOptions): Promise<{ finished: boolean }> {
     return new Promise((resolve) => {
       if (this.stopped) { resolve({ finished: false }); return; }
@@ -237,7 +244,7 @@ export class IcecastSource extends EventEmitter {
         this._write(chunk, 'ad');
       });
 
-      proc.stderr?.on('data', () => {}); // drain to prevent pipe blocking
+      proc.stderr?.on('data', () => {}); // drain to prevent pipe buffer blocking
 
       proc.on('exit', (code, signal) => {
         console.log(`[IcecastSource:${this.mount}] ad exit code=${code} signal=${signal} bytes=${adBytesWritten} socketOk=${this.connected}`);
@@ -248,9 +255,6 @@ export class IcecastSource extends EventEmitter {
     });
   }
 
-  /**
-   * Immediately kill any running ad and switch back to relay.
-   */
   killAd() {
     if (this.adProc) {
       this.adProc.kill('SIGKILL');
@@ -271,5 +275,6 @@ export class IcecastSource extends EventEmitter {
     if (this.relayProc) { this.relayProc.kill('SIGKILL'); this.relayProc = null; }
     if (this.adProc) { this.adProc.kill('SIGKILL'); this.adProc = null; }
     if (this.socket) { this.connected = false; this.socket.destroy(); this.socket = null; }
+    this.removeAllListeners();
   }
 }

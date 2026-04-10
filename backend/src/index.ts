@@ -3,7 +3,7 @@ import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import path from 'path';
-import { initDb } from './db';
+import { initDb, pool } from './db';
 import { initSocket } from './socket';
 import { regionManager } from './engine/RegionManager';
 import { toneDetector } from './engine/ToneDetector';
@@ -16,6 +16,7 @@ import schedulesRouter from './routes/schedules';
 import logsRouter from './routes/logs';
 import regionSchedulesRouter from './routes/region-schedules';
 import reportsRouter from './routes/reports';
+import { apiAuth } from './middleware/auth';
 
 const PORT = parseInt(process.env.PORT || '4000');
 
@@ -25,21 +26,21 @@ async function main() {
   const app = express();
   const server = http.createServer(app);
 
-  app.use(cors());
+  app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
   app.use(express.json());
 
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-  app.use('/api/regions', regionsRouter);
-  app.use('/api/regions/:id/time-schedules', regionSchedulesRouter);
-  app.use('/api/playlists', playlistsRouter);
-  app.use('/api/settings', settingsRouter);
-  app.use('/api/schedules', schedulesRouter);
-  app.use('/api/logs', logsRouter);
-  app.use('/api/reports', reportsRouter);
+  app.use('/api/regions', apiAuth, regionsRouter);
+  app.use('/api/regions/:id/time-schedules', apiAuth, regionSchedulesRouter);
+  app.use('/api/playlists', apiAuth, playlistsRouter);
+  app.use('/api/settings', apiAuth, settingsRouter);
+  app.use('/api/schedules', apiAuth, schedulesRouter);
+  app.use('/api/logs', apiAuth, logsRouter);
+  app.use('/api/reports', apiAuth, reportsRouter);
 
   // Status endpoint with Icecast listener counts
-  app.get('/api/status', async (req, res) => {
+  app.get('/api/status', apiAuth, async (req, res) => {
     const regions = regionManager.getStatus();
 
     // Try to fetch listener counts from Icecast
@@ -109,15 +110,22 @@ process.on('unhandledRejection', (reason) => {
   console.error('[UNHANDLED REJECTION]', reason);
 });
 
-process.on('SIGTERM', () => {
-  console.log('[PROCESS] Received SIGTERM');
+async function shutdown(signal: string) {
+  console.log(`[PROCESS] Received ${signal} — shutting down gracefully`);
+  try {
+    toneDetector.stop();
+    silenceWatchdog.stop();
+    scheduler.stop();
+    regionManager.stop();
+    await pool.end();
+  } catch (e) {
+    console.error('[PROCESS] Error during shutdown:', e);
+  }
   process.exit(0);
-});
+}
 
-process.on('SIGINT', () => {
-  console.log('[PROCESS] Received SIGINT');
-  process.exit(0);
-});
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 process.on('exit', (code) => {
   console.log(`[PROCESS] Exiting with code=${code}`);

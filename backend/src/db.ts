@@ -9,6 +9,10 @@ export const pool = new Pool({
   user: process.env.PGUSER || 'aiassistant',
 });
 
+pool.on('error', (err) => {
+  console.error('[db] Idle client error:', err);
+});
+
 export async function initDb() {
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   await pool.query(schema);

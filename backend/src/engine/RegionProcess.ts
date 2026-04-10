@@ -27,10 +27,13 @@ export interface RegionState {
   adLogId: number | null;
 }
 
+const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
+
 export class RegionProcess {
   private source: IcecastSource | null = null;
   private returnTimer: NodeJS.Timeout | null = null;
   private adActive = false;
+  private adLocked = false; // serialize concurrent startAd calls
   private adTriggerType = 'api';
   public state: RegionState;
 
@@ -155,7 +158,8 @@ export class RegionProcess {
     await src.connect();
     this.source = src;
 
-    src.on('source_switch', ({ from, to }: { from: string; to: string }) => {
+    // Use once() to avoid listener accumulation
+    src.once('source_switch', ({ from, to }: { from: string; to: string }) => {
       logEvent('warn', `Перемкнулось на резервне джерело: ${to}`, this.state.id, this.state.name);
       fireWebhook({
         event: 'source_switch',
@@ -190,68 +194,74 @@ export class RegionProcess {
     await pool.query(`UPDATE regions SET status='main' WHERE id=$1`, [this.state.id]);
     this.emit();
     logEvent('info', '→ ЕФІР (main)', this.state.id, this.state.name);
-
-    // Clear ICY metadata when returning to main
-    setIcyMetadata(this.state.mount.startsWith('/') ? this.state.mount : '/' + this.state.mount, '');
+    const mount = this.state.mount.startsWith('/') ? this.state.mount : '/' + this.state.mount;
+    setIcyMetadata(mount, '');
   }
 
   async startAd(playlistId: number, triggerType = 'api', fillerPlaylistId?: number) {
-    this.cancelReturnTimer();
-    this.adActive = true;
-    this.adTriggerType = triggerType;
-    this.state.mode = 'ad'; // set immediately to prevent concurrent startAd calls
-
-    // Campaign date check
-    if (!(await this.isCampaignActive(playlistId))) {
-      this.adActive = false;
-      this.state.mode = 'main';
+    // Serialize: prevent concurrent ad triggers
+    if (this.adLocked) {
+      console.log(`[region:${this.state.name}] startAd skipped — already locked`);
       return;
     }
+    this.adLocked = true;
 
-    // Frequency cap check
-    if (await this.isFrequencyCapped(playlistId)) {
-      this.adActive = false;
-      this.state.mode = 'main';
-      return;
-    }
+    try {
+      this.cancelReturnTimer();
+      this.adActive = true;
+      this.adTriggerType = triggerType;
+      this.state.mode = 'ad';
 
-    const files = await this.getPlaylistFiles(playlistId);
-    if (!files.length) {
-      await logEvent('warn', `Плейлист #${playlistId} порожній`, this.state.id, this.state.name);
-      this.adActive = false;
-      this.state.mode = 'main';
-      return;
-    }
+      if (!(await this.isCampaignActive(playlistId))) {
+        this.adActive = false;
+        this.state.mode = 'main';
+        return;
+      }
 
-    if (this.state.adLogId) await this.logAdEnd(this.state.adLogId, 'interrupted');
-    this.state.adLogId = await this.logAdStart(playlistId, triggerType, files.length);
-    this.state.currentPlaylist = playlistId;
+      if (await this.isFrequencyCapped(playlistId)) {
+        this.adActive = false;
+        this.state.mode = 'main';
+        return;
+      }
 
-    // Safety timeout for tone-triggered ads
-    if (triggerType === 'tone') {
-      const maxSec = this.state.returnTimerSec > 0 ? this.state.returnTimerSec : 60;
-      this.returnTimer = setTimeout(() => {
-        if (this.adActive) {
-          console.log(`[region:${this.state.name}] AD timeout ${maxSec}s — returning to main`);
-          this.returnToMain('timeout');
-        }
-      }, maxSec * 1000);
-    }
+      const files = await this.getPlaylistFiles(playlistId);
+      if (!files.length) {
+        await logEvent('warn', `Плейлист #${playlistId} порожній`, this.state.id, this.state.name);
+        this.adActive = false;
+        this.state.mode = 'main';
+        return;
+      }
 
-    // Webhook: ad start
-    fireWebhook({
-      event: 'ad_start',
-      region_id: this.state.id,
-      region_name: this.state.name,
-      playlist_id: playlistId,
-      trigger_type: triggerType,
-      ts: new Date().toISOString(),
-    });
+      if (this.state.adLogId) await this.logAdEnd(this.state.adLogId, 'interrupted');
+      this.state.adLogId = await this.logAdStart(playlistId, triggerType, files.length);
+      this.state.currentPlaylist = playlistId;
 
-    await this._playFiles(files, fillerPlaylistId, playlistId);
+      if (triggerType === 'tone') {
+        const maxSec = this.state.returnTimerSec > 0 ? this.state.returnTimerSec : 60;
+        this.returnTimer = setTimeout(() => {
+          if (this.adActive) {
+            console.log(`[region:${this.state.name}] AD timeout ${maxSec}s — returning to main`);
+            this.returnToMain('timeout');
+          }
+        }, maxSec * 1000);
+      }
 
-    if (triggerType !== 'tone' && this.state.returnMode === 'timer' && this.state.returnTimerSec > 0) {
-      this.returnTimer = setTimeout(() => this.returnToMain('timer_end'), this.state.returnTimerSec * 1000);
+      fireWebhook({
+        event: 'ad_start',
+        region_id: this.state.id,
+        region_name: this.state.name,
+        playlist_id: playlistId,
+        trigger_type: triggerType,
+        ts: new Date().toISOString(),
+      });
+
+      await this._playFiles(files, fillerPlaylistId, playlistId);
+
+      if (triggerType !== 'tone' && this.state.returnMode === 'timer' && this.state.returnTimerSec > 0) {
+        this.returnTimer = setTimeout(() => this.returnToMain('timer_end'), this.state.returnTimerSec * 1000);
+      }
+    } finally {
+      this.adLocked = false;
     }
   }
 
@@ -275,9 +285,20 @@ export class RegionProcess {
     }
 
     const src = await this.ensureSource();
+
+    // Validate all file paths are within uploads directory (prevent path traversal)
+    for (const f of files) {
+      const resolved = path.resolve(f.filepath);
+      if (!resolved.startsWith(UPLOADS_DIR)) {
+        await logEvent('error', `Підозрілий шлях файлу: ${f.filepath}`, this.state.id, this.state.name);
+        await this.returnToMain('security_error');
+        return;
+      }
+    }
+
     const concatPath = `/tmp/teren_ads_region_${this.state.id}.txt`;
-    const lines = files.map(f => `file '${f.filepath.replace(/'/g, "'\\''")}'`).join('\n');
-    fs.writeFileSync(concatPath, lines);
+    const lines = files.map(f => `file '${path.resolve(f.filepath).replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n');
+    fs.writeFileSync(concatPath, lines, { mode: 0o600 }); // restrict permissions
 
     if (this.state.mode !== 'filler') this.state.mode = 'ad';
     this.state.currentFile = files[0].filename;
@@ -286,12 +307,10 @@ export class RegionProcess {
 
     logEvent('info', `→ ${this.state.mode.toUpperCase()} (${files.length} файлів)`, this.state.id, this.state.name);
 
-    // Update ICY metadata to show ad title
     const mount = this.state.mount.startsWith('/') ? this.state.mount : '/' + this.state.mount;
     setIcyMetadata(mount, files[0].filename.replace(/\.[^.]+$/, ''));
 
     const totalDurationSec = files.reduce((sum, f) => sum + (f.duration_sec || 0), 0);
-
     const opts: FeedFileOptions = {
       crossfadeInEnabled: this.state.crossfadeInEnabled,
       crossfadeInSec: this.state.crossfadeSec,
@@ -305,6 +324,9 @@ export class RegionProcess {
     const { finished } = await src.feedFile(concatPath, opts);
     const actualDurationSec = (Date.now() - adStartTime) / 1000;
 
+    // Clean up temp file
+    try { fs.unlinkSync(concatPath); } catch {}
+
     if (!this.adActive) return;
     if (!finished) return;
 
@@ -313,7 +335,6 @@ export class RegionProcess {
       this.state.adLogId = null;
     }
 
-    // Webhook: ad end
     fireWebhook({
       event: 'ad_end',
       region_id: this.state.id,
@@ -346,7 +367,6 @@ export class RegionProcess {
       this.state.adLogId = null;
     }
 
-    // Webhook: ad end (when interrupted externally)
     if (reason !== 'playlist_end' && reason !== 'completed') {
       fireWebhook({
         event: 'ad_end',
@@ -366,7 +386,6 @@ export class RegionProcess {
     this.emit();
     logEvent('info', '→ ЕФІР (main)', this.state.id, this.state.name);
 
-    // Clear ICY metadata
     const mount = this.state.mount.startsWith('/') ? this.state.mount : '/' + this.state.mount;
     setIcyMetadata(mount, '');
   }
@@ -392,17 +411,15 @@ export class RegionProcess {
     const doShuffle = shuffle || (row.rows[0]?.shuffle ?? false);
 
     if (doShuffle) {
-      // Weighted shuffle: repeat items proportional to weight
       const res = await pool.query(
         `SELECT filepath, filename, duration_sec, weight FROM playlist_items WHERE playlist_id=$1`,
         [playlistId],
       );
       const expanded: typeof res.rows = [];
       for (const item of res.rows) {
-        const w = Math.max(1, item.weight ?? 1);
+        const w = Math.max(1, Math.min(100, item.weight ?? 1)); // cap at 100x
         for (let i = 0; i < w; i++) expanded.push(item);
       }
-      // Fisher-Yates shuffle
       for (let i = expanded.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [expanded[i], expanded[j]] = [expanded[j], expanded[i]];
