@@ -4,7 +4,7 @@ import { pool } from '../db';
 const router = Router();
 
 router.get('/', async (req, res) => {
-  const limit = parseInt(req.query.limit as string) || 200;
+  const limit = Math.min(parseInt(req.query.limit as string) || 200, 2000);
   const r = await pool.query(`
     SELECT l.*, r.name as region_name, p.name as playlist_name
     FROM ad_logs l
@@ -16,7 +16,7 @@ router.get('/', async (req, res) => {
 });
 
 router.get('/system', async (req, res) => {
-  const limit = parseInt(req.query.limit as string) || 200;
+  const limit = Math.min(parseInt(req.query.limit as string) || 200, 2000);
   const r = await pool.query(
     `SELECT * FROM system_logs ORDER BY ts DESC LIMIT $1`,
     [limit]

@@ -86,7 +86,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   // Prevent deleting a playlist that is currently playing
   const active = await pool.query(
-    `SELECT 1 FROM ad_logs WHERE playlist_id=$1 AND ended_at IS NULL LIMIT 1`,
+    `SELECT 1 FROM ad_logs WHERE playlist_id=$1 AND end_time IS NULL LIMIT 1`,
     [req.params.id]
   );
   if (active.rows.length > 0) {

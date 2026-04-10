@@ -31,6 +31,7 @@ const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
 
 export class RegionProcess {
   private source: IcecastSource | null = null;
+  private sourceConnecting = false; // guard against concurrent ensureSource calls
   private returnTimer: NodeJS.Timeout | null = null;
   private adActive = false;
   private adLocked = false; // serialize concurrent startAd calls
@@ -153,26 +154,36 @@ export class RegionProcess {
 
   private async ensureSource(): Promise<IcecastSource> {
     if (this.source) return this.source;
-    const { host, port, mount, password } = await this.buildIcecastArgs();
-    const src = new IcecastSource(host, port, mount, password);
-    await src.connect();
-    this.source = src;
+    // Guard against concurrent calls (e.g. startMain + startAd racing)
+    if (this.sourceConnecting) {
+      await new Promise(r => setTimeout(r, 200));
+      return this.ensureSource();
+    }
+    this.sourceConnecting = true;
+    try {
+      const { host, port, mount, password } = await this.buildIcecastArgs();
+      const src = new IcecastSource(host, port, mount, password);
+      await src.connect();
+      this.source = src;
 
-    // Use once() to avoid listener accumulation
-    src.once('source_switch', ({ from, to }: { from: string; to: string }) => {
-      logEvent('warn', `Перемкнулось на резервне джерело: ${to}`, this.state.id, this.state.name);
-      fireWebhook({
-        event: 'source_switch',
-        region_id: this.state.id,
-        region_name: this.state.name,
-        reason: `Primary ${from} unavailable`,
-        url: to,
-        ts: new Date().toISOString(),
+      // Use on() so every backup switch is logged (once() fires only once)
+      src.on('source_switch', ({ from, to }: { from: string; to: string }) => {
+        logEvent('warn', `Перемкнулось на резервне джерело: ${to}`, this.state.id, this.state.name);
+        fireWebhook({
+          event: 'source_switch',
+          region_id: this.state.id,
+          region_name: this.state.name,
+          reason: `Primary ${from} unavailable`,
+          url: to,
+          ts: new Date().toISOString(),
+        });
       });
-    });
 
-    console.log(`[IcecastSource:${mount}] connected`);
-    return src;
+      console.log(`[IcecastSource:${mount}] connected`);
+      return src;
+    } finally {
+      this.sourceConnecting = false;
+    }
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -257,8 +268,16 @@ export class RegionProcess {
 
       await this._playFiles(files, fillerPlaylistId, playlistId);
 
-      if (triggerType !== 'tone' && this.state.returnMode === 'timer' && this.state.returnTimerSec > 0) {
+      // Only set a return timer if still in ad mode (playlist_end didn't already return)
+      if (this.adActive && triggerType !== 'tone' && this.state.returnMode === 'timer' && this.state.returnTimerSec > 0) {
         this.returnTimer = setTimeout(() => this.returnToMain('timer_end'), this.state.returnTimerSec * 1000);
+      }
+    } catch (e) {
+      console.error(`[region:${this.state.name}] startAd error:`, e);
+      this.adActive = false;
+      if (this.state.mode === 'ad' || this.state.mode === 'filler') {
+        this.state.mode = 'main';
+        this.emit();
       }
     } finally {
       this.adLocked = false;
@@ -266,93 +285,104 @@ export class RegionProcess {
   }
 
   private async _playFiles(
-    files: { filepath: string; filename: string; duration_sec: number }[],
+    initialFiles: { filepath: string; filename: string; duration_sec: number }[],
     fillerPlaylistId?: number,
     adPlaylistId?: number,
   ): Promise<void> {
-    if (!files.length) {
-      if (fillerPlaylistId) {
-        const fillerFiles = await this.getPlaylistFiles(fillerPlaylistId, true);
-        if (fillerFiles.length) {
-          this.state.mode = 'filler';
-          await pool.query(`UPDATE regions SET status='filler' WHERE id=$1`, [this.state.id]);
-          this.emit();
-          return this._playFiles(fillerFiles, fillerPlaylistId, adPlaylistId);
+    let files = initialFiles;
+
+    // Iterative loop instead of recursion — prevents stack overflow during long filler play
+    while (true) {
+      if (!files.length) {
+        if (fillerPlaylistId) {
+          const fillerFiles = await this.getPlaylistFiles(fillerPlaylistId, true);
+          if (fillerFiles.length) {
+            this.state.mode = 'filler';
+            await pool.query(`UPDATE regions SET status='filler' WHERE id=$1`, [this.state.id]);
+            this.emit();
+            files = fillerFiles;
+            continue;
+          }
         }
-      }
-      await this.returnToMain('playlist_end');
-      return;
-    }
-
-    const src = await this.ensureSource();
-
-    // Validate all file paths are within uploads directory (prevent path traversal)
-    for (const f of files) {
-      const resolved = path.resolve(f.filepath);
-      if (!resolved.startsWith(UPLOADS_DIR)) {
-        await logEvent('error', `Підозрілий шлях файлу: ${f.filepath}`, this.state.id, this.state.name);
-        await this.returnToMain('security_error');
+        await this.returnToMain('playlist_end');
         return;
       }
-    }
 
-    const concatPath = `/tmp/teren_ads_region_${this.state.id}.txt`;
-    const lines = files.map(f => `file '${path.resolve(f.filepath).replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n');
-    fs.writeFileSync(concatPath, lines, { mode: 0o600 }); // restrict permissions
+      const src = await this.ensureSource();
 
-    if (this.state.mode !== 'filler') this.state.mode = 'ad';
-    this.state.currentFile = files[0].filename;
-    await pool.query(`UPDATE regions SET status=$1 WHERE id=$2`, [this.state.mode, this.state.id]);
-    this.emit();
-
-    logEvent('info', `→ ${this.state.mode.toUpperCase()} (${files.length} файлів)`, this.state.id, this.state.name);
-
-    const mount = this.state.mount.startsWith('/') ? this.state.mount : '/' + this.state.mount;
-    setIcyMetadata(mount, files[0].filename.replace(/\.[^.]+$/, ''));
-
-    const totalDurationSec = files.reduce((sum, f) => sum + (f.duration_sec || 0), 0);
-    const opts: FeedFileOptions = {
-      crossfadeInEnabled: this.state.crossfadeInEnabled,
-      crossfadeInSec: this.state.crossfadeSec,
-      crossfadeOutSec: this.state.crossfadeOutSec,
-      loudnormEnabled: this.state.loudnormEnabled,
-      loudnormTarget: this.state.loudnormTarget,
-      totalDurationSec,
-    };
-
-    const adStartTime = Date.now();
-    const { finished } = await src.feedFile(concatPath, opts);
-    const actualDurationSec = (Date.now() - adStartTime) / 1000;
-
-    // Clean up temp file
-    try { fs.unlinkSync(concatPath); } catch {}
-
-    if (!this.adActive) return;
-    if (!finished) return;
-
-    if (this.state.adLogId) {
-      await this.logAdEnd(this.state.adLogId, 'completed', actualDurationSec);
-      this.state.adLogId = null;
-    }
-
-    fireWebhook({
-      event: 'ad_end',
-      region_id: this.state.id,
-      region_name: this.state.name,
-      playlist_id: adPlaylistId,
-      reason: 'completed',
-      ts: new Date().toISOString(),
-    });
-
-    if (this.state.mode === 'filler') {
-      if (!this.adActive) return;
-      const nextFiller = await this.getPlaylistFiles(fillerPlaylistId!, true);
-      if (nextFiller.length) {
-        return this._playFiles(nextFiller, fillerPlaylistId, adPlaylistId);
+      // Validate all file paths are within uploads directory (prevent path traversal)
+      for (const f of files) {
+        const resolved = path.resolve(f.filepath);
+        if (!resolved.startsWith(UPLOADS_DIR)) {
+          await logEvent('error', `Підозрілий шлях файлу: ${f.filepath}`, this.state.id, this.state.name);
+          await this.returnToMain('security_error');
+          return;
+        }
       }
-      await this.returnToMain('playlist_end');
-    } else if (this.state.returnMode === 'playlist_end') {
-      await this.returnToMain('playlist_end');
+
+      const concatPath = `/tmp/teren_ads_region_${this.state.id}.txt`;
+      // ffmpeg concat: use double-quote format; escape backslashes and double-quotes
+      const lines = files.map(f => {
+        const p = path.resolve(f.filepath).replace(/\\/g, '/').replace(/"/g, '\\"');
+        return `file "${p}"`;
+      }).join('\n');
+      fs.writeFileSync(concatPath, lines, { mode: 0o600 }); // restrict permissions
+
+      if (this.state.mode !== 'filler') this.state.mode = 'ad';
+      this.state.currentFile = files[0].filename;
+      await pool.query(`UPDATE regions SET status=$1 WHERE id=$2`, [this.state.mode, this.state.id]);
+      this.emit();
+
+      logEvent('info', `→ ${this.state.mode.toUpperCase()} (${files.length} файлів)`, this.state.id, this.state.name);
+
+      const mount = this.state.mount.startsWith('/') ? this.state.mount : '/' + this.state.mount;
+      setIcyMetadata(mount, files[0].filename.replace(/\.[^.]+$/, ''));
+
+      const totalDurationSec = files.reduce((sum, f) => sum + (f.duration_sec || 0), 0);
+      const opts: FeedFileOptions = {
+        crossfadeInEnabled: this.state.crossfadeInEnabled,
+        crossfadeInSec: this.state.crossfadeSec,
+        crossfadeOutSec: this.state.crossfadeOutSec,
+        loudnormEnabled: this.state.loudnormEnabled,
+        loudnormTarget: this.state.loudnormTarget,
+        totalDurationSec,
+      };
+
+      const adStartTime = Date.now();
+      const { finished } = await src.feedFile(concatPath, opts);
+      const actualDurationSec = (Date.now() - adStartTime) / 1000;
+
+      // Clean up temp file
+      try { fs.unlinkSync(concatPath); } catch {}
+
+      if (!this.adActive) return;
+      if (!finished) return;
+
+      if (this.state.adLogId) {
+        await this.logAdEnd(this.state.adLogId, 'completed', actualDurationSec);
+        this.state.adLogId = null;
+      }
+
+      fireWebhook({
+        event: 'ad_end',
+        region_id: this.state.id,
+        region_name: this.state.name,
+        playlist_id: adPlaylistId,
+        reason: 'completed',
+        ts: new Date().toISOString(),
+      });
+
+      if (this.state.mode === 'filler') {
+        if (!this.adActive) return;
+        // Loop: get next filler batch
+        const nextFiller = await this.getPlaylistFiles(fillerPlaylistId!, true);
+        files = nextFiller; // loop continues
+      } else if (this.state.returnMode === 'playlist_end') {
+        await this.returnToMain('playlist_end');
+        return;
+      } else {
+        return;
+      }
     }
   }
 

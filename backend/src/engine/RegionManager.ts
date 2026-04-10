@@ -118,10 +118,8 @@ class RegionManager {
     }
   }
 
-  stop() {
-    for (const rp of this.regions.values()) {
-      rp.stop();
-    }
+  async stop() {
+    await Promise.allSettled([...this.regions.values()].map(rp => rp.stop()));
     this.regions.clear();
   }
 

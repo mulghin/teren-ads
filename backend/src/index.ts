@@ -116,7 +116,7 @@ async function shutdown(signal: string) {
     toneDetector.stop();
     silenceWatchdog.stop();
     scheduler.stop();
-    regionManager.stop();
+    await regionManager.stop();
     await pool.end();
   } catch (e) {
     console.error('[PROCESS] Error during shutdown:', e);

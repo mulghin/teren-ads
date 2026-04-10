@@ -67,7 +67,8 @@ router.get('/regions', async (req, res) => {
 
 // Detailed play log
 router.get('/plays', async (req, res) => {
-  const { from, to, region_id, playlist_id, limit = 200 } = req.query;
+  const { from, to, region_id, playlist_id } = req.query;
+  const limit = Math.min(parseInt(req.query.limit as string) || 200, 5000);
   const fromDate = from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const toDate = to || new Date().toISOString().slice(0, 10);
 
