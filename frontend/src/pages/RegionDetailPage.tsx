@@ -265,6 +265,7 @@ function SchedulesTab({ regionId }: { regionId: number }) {
   const [modal, setModal] = useState<null | 'create' | number>(null);
   const [form, setForm] = useState({ ...emptySchedule });
   const [saving, setSaving] = useState(false);
+  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const load = async () => {
     const [s, p] = await Promise.all([api.getRegionSchedules(regionId), api.getPlaylists()]);
@@ -299,9 +300,11 @@ function SchedulesTab({ regionId }: { regionId: number }) {
     } finally { setSaving(false); }
   };
 
-  const del = async (id: number) => {
-    if (!confirm('Видалити запис розкладу?')) return;
-    await api.deleteRegionSchedule(regionId, id); await load();
+  const del = (id: number) => {
+    setConfirm({ message: 'Видалити запис розкладу?', onConfirm: async () => {
+      setConfirm(null);
+      await api.deleteRegionSchedule(regionId, id); await load();
+    }});
   };
 
   const toggleDay = (day: string) => {
@@ -321,6 +324,7 @@ function SchedulesTab({ regionId }: { regionId: number }) {
 
   return (
     <div className="p-4 sm:p-6">
+      {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
       <div className="flex items-center justify-between mb-5">
         <div>
           <h3 className="text-base font-semibold text-white">Розклад за часом</h3>
@@ -451,6 +455,7 @@ function AssignmentsTab({ regionId }: { regionId: number }) {
   const [allPlaylists, setAllPlaylists] = useState<any[]>([]);
   const [form, setForm] = useState({ playlist_id: '', filler_playlist_id: '', priority: 0, active: true });
   const [saving, setSaving] = useState(false);
+  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const load = async () => {
     const [a, p] = await Promise.all([api.getAssignments(regionId), api.getPlaylists()]);
@@ -475,15 +480,18 @@ function AssignmentsTab({ regionId }: { regionId: number }) {
     } finally { setSaving(false); }
   };
 
-  const del = async (aid: number) => {
-    if (!confirm('Видалити призначення?')) return;
-    await api.deleteAssignment(regionId, aid); await load();
+  const del = (aid: number) => {
+    setConfirm({ message: 'Видалити призначення?', onConfirm: async () => {
+      setConfirm(null);
+      await api.deleteAssignment(regionId, aid); await load();
+    }});
   };
 
   const playlists = allPlaylists;
 
   return (
     <div className="p-4 sm:p-6">
+      {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
       <div className="mb-5">
         <h3 className="text-base font-semibold text-white">Призначення плейлистів</h3>
         <p className="text-xs text-[#4a4a7a] mt-1">

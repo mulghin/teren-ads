@@ -18,6 +18,7 @@ export default function Dashboard() {
   const [selPlaylist, setSelPlaylist] = useState('');
   const [selFiller, setSelFiller] = useState('');
   const [busy, setBusy] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     const [r, p] = await Promise.all([api.getRegions(), api.getPlaylists()]);
@@ -33,7 +34,8 @@ export default function Dashboard() {
 
   const action = async (fn: () => Promise<any>, id: number) => {
     setBusy(id);
-    try { await fn(); } finally { setBusy(null); }
+    try { await fn(); } catch (e: any) { setError(e.message); setTimeout(() => setError(null), 4000); }
+    finally { setBusy(null); }
   };
 
   const handleTrigger = async () => {
@@ -51,6 +53,11 @@ export default function Dashboard() {
 
   return (
     <div className="p-4 sm:p-6">
+      {error && (
+        <div className="fixed top-4 right-4 z-50 bg-red-500/15 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-xl shadow-lg max-w-sm">
+          {error}
+        </div>
+      )}
       {/* Header */}
       <div className="page-header">
         <h1 className="page-title">Дашборд</h1>

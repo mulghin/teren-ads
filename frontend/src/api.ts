@@ -1,9 +1,14 @@
 const BASE = '/api';
+const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
+
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return API_KEY ? { ...extra, 'Authorization': `Bearer ${API_KEY}` } : extra;
+}
 
 async function req<T>(method: string, url: string, body?: any): Promise<T> {
   const res = await fetch(BASE + url, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: authHeaders(body ? { 'Content-Type': 'application/json' } : {}),
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(await res.text());
@@ -89,7 +94,11 @@ export const api = {
 export async function uploadFiles(playlistId: number, files: File[]): Promise<any[]> {
   const form = new FormData();
   files.forEach(f => form.append('files', f));
-  const res = await fetch(`${BASE}/playlists/${playlistId}/upload`, { method: 'POST', body: form });
+  const res = await fetch(`${BASE}/playlists/${playlistId}/upload`, {
+    method: 'POST',
+    body: form,
+    headers: authHeaders(), // no Content-Type — browser sets multipart boundary automatically
+  });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

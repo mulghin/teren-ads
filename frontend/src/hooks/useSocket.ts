@@ -1,22 +1,34 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 
+// Connect to same origin — works in dev (proxied via /socket.io) and production
+// Pass API key if configured (VITE_API_KEY env var)
+const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
+
 let globalSocket: Socket | null = null;
+
+function getSocket(): Socket {
+  if (!globalSocket) {
+    globalSocket = io({
+      auth: API_KEY ? { token: API_KEY } : undefined,
+    });
+  }
+  return globalSocket;
+}
 
 export function useSocket() {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    if (!globalSocket) {
-      globalSocket = io('http://localhost:4000');
-    }
-    const s = globalSocket;
-    s.on('connect', () => setConnected(true));
-    s.on('disconnect', () => setConnected(false));
+    const s = getSocket();
+    const onConnect = () => setConnected(true);
+    const onDisconnect = () => setConnected(false);
+    s.on('connect', onConnect);
+    s.on('disconnect', onDisconnect);
     setConnected(s.connected);
     return () => {
-      s.off('connect');
-      s.off('disconnect');
+      s.off('connect', onConnect);
+      s.off('disconnect', onDisconnect);
     };
   }, []);
 
@@ -28,14 +40,10 @@ export function useLogEntries(onEntry: (data: any) => void) {
   cbRef.current = onEntry;
 
   useEffect(() => {
-    if (!globalSocket) {
-      globalSocket = io('http://localhost:4000');
-    }
+    const s = getSocket();
     const handler = (data: any) => cbRef.current(data);
-    globalSocket.on('log:entry', handler);
-    return () => {
-      globalSocket?.off('log:entry', handler);
-    };
+    s.on('log:entry', handler);
+    return () => { s.off('log:entry', handler); };
   }, []);
 }
 
@@ -44,14 +52,14 @@ export function useRegionUpdates(onUpdate: (data: any) => void) {
   cbRef.current = onUpdate;
 
   useEffect(() => {
-    if (!globalSocket) {
-      globalSocket = io('http://localhost:4000');
-    }
-    const handler = (data: any) => cbRef.current(data);
-    globalSocket.on('region:update', handler);
-    globalSocket.on('regions:status', (list: any[]) => list.forEach(r => cbRef.current(r)));
+    const s = getSocket();
+    const handleUpdate = (data: any) => cbRef.current(data);
+    const handleStatus = (list: any[]) => list.forEach(r => cbRef.current(r));
+    s.on('region:update', handleUpdate);
+    s.on('regions:status', handleStatus);
     return () => {
-      globalSocket?.off('region:update', handler);
+      s.off('region:update', handleUpdate);
+      s.off('regions:status', handleStatus); // was missing — memory leak fixed
     };
   }, []);
 }
