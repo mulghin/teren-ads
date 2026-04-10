@@ -21,7 +21,7 @@ const storage = multer.diskStorage({
     cb(null, safe);
   },
 });
-const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024, files: 50 } });
 
 const router = Router();
 
@@ -129,7 +129,7 @@ router.put('/:id/items/:itemId', async (req, res) => {
   const { weight } = req.body;
   const r = await pool.query(
     `UPDATE playlist_items SET weight=$1 WHERE id=$2 AND playlist_id=$3 RETURNING *`,
-    [Math.max(1, parseInt(weight) || 1), req.params.itemId, req.params.id]
+    [Math.max(1, Math.min(100, parseInt(weight) || 1)), req.params.itemId, req.params.id]
   );
   res.json(r.rows[0]);
 });

@@ -70,6 +70,7 @@ router.put('/:id', async (req, res) => {
     [name, slug, icecast_mount, crossfade_sec, crossfade_in_enabled, crossfade_out_sec,
      loudnorm_enabled, loudnorm_target, return_mode, return_timer_sec, enabled, id]
   );
+  if (!r.rows[0]) return res.status(404).json({ error: 'Region not found' });
   await regionManager.reload();
   res.json(r.rows[0]);
 });
@@ -77,7 +78,7 @@ router.put('/:id', async (req, res) => {
 // DELETE region
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
-  await regionManager.stopRegion(parseInt(id));
+  try { await regionManager.stopRegion(parseInt(id)); } catch {} // region may not be in manager if disabled
   await pool.query(`DELETE FROM regions WHERE id=$1`, [id]);
   await regionManager.reload();
   res.json({ ok: true });

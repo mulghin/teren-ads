@@ -9,15 +9,28 @@ export function initSocket(server: HttpServer) {
     cors: { origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }
   });
 
+  // Authenticate socket connections via API key (same as HTTP)
+  io.use((socket, next) => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) return next(); // Dev mode: no auth required
+
+    const token = socket.handshake.auth?.token
+      || socket.handshake.headers['x-api-key'];
+    if (!token || token !== apiKey) {
+      return next(new Error('Unauthorized'));
+    }
+    next();
+  });
+
   io.on('connection', (socket) => {
     // Send current status on connect
     socket.emit('regions:status', regionManager.getStatus());
 
     socket.on('region:start', async ({ id }) => {
-      await regionManager.startMain(id);
+      try { await regionManager.startMain(id); } catch (e) { console.error('[socket] region:start error:', e); }
     });
     socket.on('region:stop', async ({ id }) => {
-      await regionManager.stopRegion(id);
+      try { await regionManager.stopRegion(id); } catch (e) { console.error('[socket] region:stop error:', e); }
     });
   });
 

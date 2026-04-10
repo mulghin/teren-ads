@@ -407,14 +407,12 @@ export class RegionProcess {
       });
     }
 
-    logEvent('info', `повернення в ЕФІР (${reason})`, this.state.id, this.state.name);
-
     this.state.mode = 'main';
     this.state.currentPlaylist = null;
     this.state.currentFile = null;
     await pool.query(`UPDATE regions SET status='main' WHERE id=$1`, [this.state.id]);
     this.emit();
-    logEvent('info', '→ ЕФІР (main)', this.state.id, this.state.name);
+    logEvent('info', `→ ЕФІР (main) [${reason}]`, this.state.id, this.state.name);
 
     const mount = this.state.mount.startsWith('/') ? this.state.mount : '/' + this.state.mount;
     setIcyMetadata(mount, '');

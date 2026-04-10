@@ -7,6 +7,8 @@ export const pool = new Pool({
   port: 5432,
   database: 'teren_ads',
   user: process.env.PGUSER || 'aiassistant',
+  connectionTimeoutMillis: 5000,
+  idleTimeoutMillis: 30000,
 });
 
 pool.on('error', (err) => {

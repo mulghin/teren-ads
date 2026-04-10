@@ -46,9 +46,9 @@ async function main() {
     // Try to fetch listener counts from Icecast
     let icecastSources: any[] = [];
     try {
-      const { getSetting } = await import('./db');
-      const host = await getSetting('icecast_host');
-      const port = await getSetting('icecast_port');
+      const { getSetting } = await import('./db'); // lazy import kept intentional — avoid circular dep risk at startup
+      const host = (await getSetting('icecast_host')) || 'localhost';
+      const port = (await getSetting('icecast_port')) || '8000';
       const url = `http://${host}:${port}/status-json.xsl`;
       const iceRes = await fetch(url, { signal: AbortSignal.timeout(2000) });
       const json = await iceRes.json() as any;

@@ -74,8 +74,10 @@ class RegionManager {
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
       const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
 
-      for (const rp of this.regions.values()) {
-        if (rp.state.mode === 'main') {
+      // Fire all regions in parallel — each independently resolves its schedule
+      await Promise.allSettled([...this.regions.values()]
+        .filter(rp => rp.state.mode === 'main')
+        .map(async (rp) => {
           const schedRes = await pool.query(
             `SELECT * FROM region_schedules WHERE region_id=$1 AND is_active=TRUE`,
             [rp.state.id]
@@ -93,7 +95,7 @@ class RegionManager {
           }
 
           if (matched) {
-            if (rp.state.mode !== 'main') continue;
+            if (rp.state.mode !== 'main') return;
             await rp.startAd(matched.playlist_id, 'tone', matched.filler_playlist_id);
           } else {
             const res = await pool.query(
@@ -102,19 +104,18 @@ class RegionManager {
               [rp.state.id]
             );
             if (res.rows[0]) {
-              if (rp.state.mode !== 'main') continue;
+              if (rp.state.mode !== 'main') return;
               await rp.startAd(res.rows[0].playlist_id, 'tone', res.rows[0].filler_playlist_id);
             }
           }
-        }
-      }
+        })
+      );
     } else {
-      for (const rp of this.regions.values()) {
-        if (rp.state.mode === 'ad' || rp.state.mode === 'filler') {
-          if (rp.state.returnMode === 'playlist_end') continue;
-          await rp.returnToMain('tone');
-        }
-      }
+      // Return all ad/filler regions to main in parallel
+      await Promise.allSettled([...this.regions.values()]
+        .filter(rp => (rp.state.mode === 'ad' || rp.state.mode === 'filler') && rp.state.returnMode !== 'playlist_end')
+        .map(rp => rp.returnToMain('tone'))
+      );
     }
   }
 
