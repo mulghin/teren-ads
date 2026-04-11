@@ -12,8 +12,6 @@ import ReportsPage from './pages/ReportsPage';
 const navItems = [
   { to: '/', label: 'Дашборд', icon: GridIcon },
   { to: '/regions', label: 'Регіони', icon: RadioIcon },
-  { to: '/playlists', label: 'Плейлисти', icon: MusicIcon },
-  { to: '/schedules', label: 'Розклад', icon: ClockIcon },
   { to: '/reports', label: 'Звіти', icon: ChartIcon },
   { to: '/logs', label: 'Логи', icon: LogIcon },
   { to: '/settings', label: 'Налаштування', icon: SettingsIcon },
