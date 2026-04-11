@@ -20,10 +20,10 @@ const empty = { region_id: '', playlist_id: '', days: 'all', times: [''], enable
 function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="bg-[#0f0f1e] border border-[#1a1a30] rounded-2xl p-6 w-80 shadow-2xl">
+      <div className="bg-[#212126] border border-[#383840] rounded-2xl p-6 w-80 shadow-2xl">
         <p className="text-white text-sm mb-6 leading-relaxed">{message}</p>
         <div className="flex gap-3 justify-end">
-          <button onClick={onCancel} className="px-4 py-2 rounded-xl text-xs text-[#8888aa] hover:text-white hover:bg-[#1a1a30] transition-colors">Скасувати</button>
+          <button onClick={onCancel} className="px-4 py-2 rounded-xl text-xs text-[#9a9aa5] hover:text-white hover:bg-[#383840] transition-colors">Скасувати</button>
           <button onClick={onConfirm} className="px-4 py-2 rounded-xl text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300 transition-colors">Видалити</button>
         </div>
       </div>
@@ -112,26 +112,26 @@ export default function SchedulesPage() {
               <div className="flex items-start justify-between mb-2">
                 <div>
                   <div className="font-semibold text-white text-sm">{s.region_name}</div>
-                  <div className="text-xs text-[#5a5a8a] mt-0.5">{s.playlist_name}</div>
+                  <div className="text-xs text-[#7a7a85] mt-0.5">{s.playlist_name}</div>
                 </div>
-                <span className={`badge ${s.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#1a1a30] text-[#4a4a7a]'}`}>
+                <span className={`badge ${s.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#383840] text-[#7a7a85]'}`}>
                   {s.enabled ? 'Активний' : 'Вимкнений'}
                 </span>
               </div>
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-xs text-[#4a4a7a]">{DAYS.find(d => d.value === s.days)?.label || s.days}</span>
-                <span className="text-[#2a2a50]">·</span>
-                <span className="text-xs font-mono text-[#f5a623]">{times.join(', ')}</span>
+                <span className="text-xs text-[#7a7a85]">{DAYS.find(d => d.value === s.days)?.label || s.days}</span>
+                <span className="text-[#30303a]">·</span>
+                <span className="text-xs font-mono text-[#ff732e]">{times.join(', ')}</span>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => openEdit(s)} className="btn-ghost flex-1 text-xs py-2">Редагувати</button>
-                <button onClick={() => del(s.id)} className="btn-danger border border-[#1e1e3a] rounded-lg px-3 py-2">✕</button>
+                <button onClick={() => del(s.id)} className="btn-danger border border-[#383840] rounded-lg px-3 py-2">✕</button>
               </div>
             </div>
           );
         })}
         {!schedules.length && (
-          <div className="card p-10 text-center text-[#4a4a7a] text-sm">Немає розкладу</div>
+          <div className="card p-10 text-center text-[#7a7a85] text-sm">Немає розкладу</div>
         )}
       </div>
 
@@ -140,7 +140,7 @@ export default function SchedulesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#1a1a30]">
+              <tr className="border-b border-[#383840]">
                 <th className="th">Регіон</th>
                 <th className="th">Плейлист</th>
                 <th className="th">Дні</th>
@@ -153,13 +153,13 @@ export default function SchedulesPage() {
               {schedules.map(s => {
                 const times = parseTimes(s);
                 return (
-                  <tr key={s.id} className="hover:bg-[#1a1a30]/40 transition-colors">
+                  <tr key={s.id} className="hover:bg-[#383840]/40 transition-colors">
                     <td className="td font-semibold text-white">{s.region_name}</td>
-                    <td className="td text-[#5a5a8a]">{s.playlist_name}</td>
-                    <td className="td text-[#5a5a8a] text-xs">{DAYS.find(d => d.value === s.days)?.label || s.days}</td>
-                    <td className="td font-mono text-xs text-[#f5a623]">{times.join(', ')}</td>
+                    <td className="td text-[#7a7a85]">{s.playlist_name}</td>
+                    <td className="td text-[#7a7a85] text-xs">{DAYS.find(d => d.value === s.days)?.label || s.days}</td>
+                    <td className="td font-mono text-xs text-[#ff732e]">{times.join(', ')}</td>
                     <td className="td">
-                      <span className={`badge ${s.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#1a1a30] text-[#4a4a7a]'}`}>
+                      <span className={`badge ${s.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#383840] text-[#7a7a85]'}`}>
                         {s.enabled ? 'Активний' : 'Вимкнений'}
                       </span>
                     </td>
@@ -171,7 +171,7 @@ export default function SchedulesPage() {
                 );
               })}
               {!schedules.length && (
-                <tr><td colSpan={6} className="td text-center py-10 text-[#4a4a7a]">Немає розкладу</td></tr>
+                <tr><td colSpan={6} className="td text-center py-10 text-[#7a7a85]">Немає розкладу</td></tr>
               )}
             </tbody>
           </table>
@@ -182,21 +182,21 @@ export default function SchedulesPage() {
       {modal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
           <div className="modal-box max-h-[90vh] overflow-y-auto">
-            <div className="px-5 pt-5 pb-4 border-b border-[#1a1a30]">
+            <div className="px-5 pt-5 pb-4 border-b border-[#383840]">
               <h2 className="text-base font-bold text-white">
                 {modal === 'create' ? 'Новий розклад' : 'Редагувати розклад'}
               </h2>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="text-xs text-[#4a4a7a] mb-1.5 block">Регіон *</label>
+                <label className="text-xs text-[#7a7a85] mb-1.5 block">Регіон *</label>
                 <Select value={form.region_id} onChange={e => f('region_id', e.target.value)}>
                   <option value="">— оберіть регіон —</option>
                   {regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </Select>
               </div>
               <div>
-                <label className="text-xs text-[#4a4a7a] mb-1.5 block">Плейлист реклами *</label>
+                <label className="text-xs text-[#7a7a85] mb-1.5 block">Плейлист реклами *</label>
                 <Select value={form.playlist_id} onChange={e => f('playlist_id', e.target.value)}>
                   <option value="">— оберіть плейлист —</option>
                   {playlists.filter(p => p.type === 'ad').map(p => (
@@ -205,13 +205,13 @@ export default function SchedulesPage() {
                 </Select>
               </div>
               <div>
-                <label className="text-xs text-[#4a4a7a] mb-1.5 block">Дні тижня</label>
+                <label className="text-xs text-[#7a7a85] mb-1.5 block">Дні тижня</label>
                 <Select value={form.days} onChange={e => f('days', e.target.value)}>
                   {DAYS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
                 </Select>
               </div>
               <div>
-                <label className="text-xs text-[#4a4a7a] mb-1.5 block">Час виходу</label>
+                <label className="text-xs text-[#7a7a85] mb-1.5 block">Час виходу</label>
                 <div className="space-y-2">
                   {form.times.map((t: string, i: number) => (
                     <div key={i} className="flex gap-2">
@@ -222,11 +222,11 @@ export default function SchedulesPage() {
                       )}
                     </div>
                   ))}
-                  <button onClick={addTime} className="text-xs text-[#f5a623] hover:text-yellow-300 py-1">+ Додати час</button>
+                  <button onClick={addTime} className="text-xs text-[#ff732e] hover:text-yellow-300 py-1">+ Додати час</button>
                 </div>
               </div>
               <label className="flex items-center gap-3 cursor-pointer py-1" onClick={() => f('enabled', !form.enabled)}>
-                <div className={`w-9 h-5 rounded-full transition-colors relative ${form.enabled ? 'bg-[#f5a623]' : 'bg-[#1a1a30]'}`}>
+                <div className={`w-9 h-5 rounded-full transition-colors relative ${form.enabled ? 'bg-[#ff732e]' : 'bg-[#383840]'}`}>
                   <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.enabled ? 'left-4' : 'left-0.5'}`} />
                 </div>
                 <span className="text-sm text-gray-300">Активний</span>

@@ -13,11 +13,11 @@ const fmtDur = (sec: number) => {
 function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="bg-[#0f0f1e] border border-[#1a1a30] rounded-2xl p-6 w-80 shadow-2xl">
+      <div className="bg-[#212126] border border-[#383840] rounded-2xl p-6 w-80 shadow-2xl">
         <p className="text-white text-sm mb-6 leading-relaxed">{message}</p>
         <div className="flex gap-3 justify-end">
           <button onClick={onCancel}
-            className="px-4 py-2 rounded-xl text-xs text-[#8888aa] hover:text-white hover:bg-[#1a1a30] transition-colors">
+            className="px-4 py-2 rounded-xl text-xs text-[#9a9aa5] hover:text-white hover:bg-[#383840] transition-colors">
             Скасувати
           </button>
           <button onClick={onConfirm}
@@ -168,11 +168,11 @@ export default function PlaylistsPage() {
           <div key={p.id} onClick={() => selectPlaylist(p)}
             className={`rounded-xl px-3 py-3 cursor-pointer flex items-center justify-between group transition-all border ` +
               (selected?.id === p.id
-                ? 'bg-[#f5a623]/8 border-[#f5a623]/25 text-[#f5a623]'
-                : 'border-transparent hover:bg-[#1a1a30] text-[#8888aa] hover:text-white')}>
+                ? 'bg-[#ff732e]/8 border-[#ff732e]/25 text-[#ff732e]'
+                : 'border-transparent hover:bg-[#383840] text-[#9a9aa5] hover:text-white')}>
             <div className="min-w-0">
               <div className="text-sm font-medium truncate">{p.name}</div>
-              <div className="text-xs text-[#4a4a7a] mt-0.5">
+              <div className="text-xs text-[#7a7a85] mt-0.5">
                 {p.type === 'ad' ? '📣' : '🎵'} {p.item_count} файлів
               </div>
             </div>
@@ -183,7 +183,7 @@ export default function PlaylistsPage() {
           </div>
         ))}
         {!playlists.length && (
-          <div className="text-center py-6 text-[#3a3a5c] text-sm">Немає плейлистів</div>
+          <div className="text-center py-6 text-[#5a5a62] text-sm">Немає плейлистів</div>
         )}
       </div>
     </div>
@@ -203,12 +203,12 @@ export default function PlaylistsPage() {
         <div className="fixed inset-0 bg-black/60 z-20 sm:hidden" onClick={() => setShowSidebar(false)} />
       )}
 
-      <div className="hidden sm:flex flex-col w-64 flex-shrink-0 border-r border-[#1a1a30] p-4 overflow-hidden">
+      <div className="hidden sm:flex flex-col w-64 flex-shrink-0 border-r border-[#383840] p-4 overflow-hidden">
         <PlaylistList />
       </div>
 
       {showSidebar && (
-        <div className="fixed inset-y-0 left-0 w-72 z-30 bg-[#0a0a16] border-r border-[#1a1a30] p-4 sm:hidden overflow-y-auto">
+        <div className="fixed inset-y-0 left-0 w-72 z-30 bg-[#121214] border-r border-[#383840] p-4 sm:hidden overflow-y-auto">
           <PlaylistList />
         </div>
       )}
@@ -220,7 +220,7 @@ export default function PlaylistsPage() {
               <h1 className="page-title">Плейлисти</h1>
               <button onClick={() => setShowSidebar(true)} className="btn-ghost sm:hidden text-xs">☰ Список</button>
             </div>
-            <div className="card flex-1 flex items-center justify-center text-[#4a4a7a] text-sm">
+            <div className="card flex-1 flex items-center justify-center text-[#7a7a85] text-sm">
               Оберіть плейлист зліва
             </div>
           </div>
@@ -231,16 +231,16 @@ export default function PlaylistsPage() {
               <div className="flex-1 min-w-0">
                 <h2 className="text-lg font-bold text-white truncate">{selected.name}</h2>
                 {items.length > 0 && (
-                  <div className="text-xs text-[#4a4a7a] mt-0.5">
+                  <div className="text-xs text-[#7a7a85] mt-0.5">
                     {items.length} файлів · {fmtDur(totalDur)}
                   </div>
                 )}
               </div>
               <label className="flex items-center gap-2 cursor-pointer flex-shrink-0" onClick={toggleShuffle}>
-                <div className={`w-8 h-4 rounded-full transition-colors relative ${selected.shuffle ? 'bg-[#f5a623]' : 'bg-[#1a1a30]'}`}>
+                <div className={`w-8 h-4 rounded-full transition-colors relative ${selected.shuffle ? 'bg-[#ff732e]' : 'bg-[#383840]'}`}>
                   <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${selected.shuffle ? 'left-4' : 'left-0.5'}`} />
                 </div>
-                <span className="text-xs text-[#8888aa]">Shuffle</span>
+                <span className="text-xs text-[#9a9aa5]">Shuffle</span>
               </label>
               <input ref={fileRef} type="file" multiple accept="audio/*" className="hidden" onChange={handleUpload} />
               <button onClick={() => fileRef.current?.click()} disabled={uploading} className="btn-primary text-xs py-2">
@@ -253,15 +253,15 @@ export default function PlaylistsPage() {
                 <div className="flex-1 flex items-center justify-center">
                   <div className="text-center">
                     <div className="text-3xl mb-3">🎵</div>
-                    <div className="text-[#4a4a7a] text-sm">Натисніть «+ Файли» для завантаження</div>
+                    <div className="text-[#7a7a85] text-sm">Натисніть «+ Файли» для завантаження</div>
                   </div>
                 </div>
               ) : (
                 <>
                   <div className="overflow-auto flex-1">
                     <table className="w-full text-sm">
-                      <thead className="sticky top-0 bg-[#0f0f1e]">
-                        <tr className="border-b border-[#1a1a30]">
+                      <thead className="sticky top-0 bg-[#212126]">
+                        <tr className="border-b border-[#383840]">
                           <th className="th w-10">#</th>
                           <th className="th w-8"></th>
                           <th className="th">Файл</th>
@@ -272,11 +272,11 @@ export default function PlaylistsPage() {
                       <tbody>
                         {items.map((item, i) => (
                           <tr key={item.id}
-                            className={`transition-colors ${playingItem?.id === item.id ? 'bg-[#f5a623]/5' : 'hover:bg-[#1a1a30]/40'}`}>
-                            <td className="td text-[#4a4a7a] w-10">{i + 1}</td>
+                            className={`transition-colors ${playingItem?.id === item.id ? 'bg-[#ff732e]/5' : 'hover:bg-[#383840]/40'}`}>
+                            <td className="td text-[#7a7a85] w-10">{i + 1}</td>
                             <td className="td w-8">
                               <button onClick={() => playItem(item)}
-                                className={`text-base leading-none transition-colors ${playingItem?.id === item.id ? 'text-[#f5a623]' : 'text-[#4a4a7a] hover:text-white'}`}
+                                className={`text-base leading-none transition-colors ${playingItem?.id === item.id ? 'text-[#ff732e]' : 'text-[#7a7a85] hover:text-white'}`}
                                 title={playingItem?.id === item.id ? 'Зупинити' : 'Відтворити'}>
                                 {playingItem?.id === item.id ? '⏹' : '▶'}
                               </button>
@@ -286,7 +286,7 @@ export default function PlaylistsPage() {
                                 {item.filename}
                               </div>
                             </td>
-                            <td className="td text-right text-[#5a5a8a] font-mono text-xs w-20">{fmtDur(item.duration_sec)}</td>
+                            <td className="td text-right text-[#7a7a85] font-mono text-xs w-20">{fmtDur(item.duration_sec)}</td>
                             <td className="td w-10 text-right">
                               <button onClick={() => delItem(item.id, item.filename)}
                                 className="text-red-400 hover:text-red-300 text-xs">✕</button>
@@ -299,20 +299,20 @@ export default function PlaylistsPage() {
 
                   {/* Audio player bar */}
                   {playingItem && (
-                    <div className="border-t border-[#1a1a30] px-4 py-3 flex-shrink-0 bg-[#0a0a16]">
+                    <div className="border-t border-[#383840] px-4 py-3 flex-shrink-0 bg-[#121214]">
                       <div className="flex items-center gap-3">
                         <button onClick={() => playItem(playingItem)}
-                          className="text-[#f5a623] text-base flex-shrink-0">⏹</button>
+                          className="text-[#ff732e] text-base flex-shrink-0">⏹</button>
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs text-[#8888aa] truncate mb-1">{playingItem.filename}</div>
+                          <div className="text-xs text-[#9a9aa5] truncate mb-1">{playingItem.filename}</div>
                           <input
                             type="range" min={0} max={audioDuration || 1} step={0.1}
                             value={currentTime}
                             onChange={e => seek(Number(e.target.value))}
-                            className="w-full h-1 accent-[#f5a623] cursor-pointer"
+                            className="w-full h-1 accent-[#ff732e] cursor-pointer"
                           />
                         </div>
-                        <div className="text-xs font-mono text-[#5a5a8a] flex-shrink-0 w-20 text-right">
+                        <div className="text-xs font-mono text-[#7a7a85] flex-shrink-0 w-20 text-right">
                           {fmtDur(currentTime)} / {fmtDur(audioDuration)}
                         </div>
                       </div>

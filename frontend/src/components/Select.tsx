@@ -50,20 +50,20 @@ export function Select({ value, onChange, children, className = '', disabled }: 
         onClick={() => !disabled && setOpen(v => !v)}
         className={[
           'w-full flex items-center justify-between gap-2',
-          'bg-[#0c0c1e] border rounded-lg px-3 py-2.5 text-sm text-left',
+          'bg-[#1c1c1f] border rounded-lg px-3 py-2.5 text-sm text-left',
           'outline-none transition-colors',
           open
-            ? 'border-[#f5a623]/60 ring-1 ring-[#f5a623]/20'
-            : 'border-[#1e1e3a] hover:border-[#2a2a4a]',
+            ? 'border-[#ff732e]/60 ring-1 ring-[#ff732e]/20'
+            : 'border-[#383840] hover:border-[#383840]',
           disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer',
         ].join(' ')}
       >
-        <span className={current ? 'text-white' : 'text-[#3a3a5c]'}>
+        <span className={current ? 'text-white' : 'text-[#5a5a62]'}>
           {current?.label ?? '—'}
         </span>
         {/* Chevron */}
         <svg
-          className={`w-4 h-4 text-[#4a4a7a] flex-shrink-0 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 text-[#7a7a85] flex-shrink-0 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
           viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"
         >
           <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
@@ -72,7 +72,7 @@ export function Select({ value, onChange, children, className = '', disabled }: 
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute z-50 left-0 right-0 mt-1 py-1 bg-[#0f0f22] border border-[#1e1e3a] rounded-xl shadow-2xl shadow-black/60 overflow-hidden">
+        <div className="absolute z-50 left-0 right-0 mt-1 py-1 bg-[#212126] border border-[#383840] rounded-xl shadow-2xl shadow-black/60 overflow-hidden">
           {options.map(opt => {
             const active = String(opt.value) === String(value);
             return (
@@ -83,12 +83,12 @@ export function Select({ value, onChange, children, className = '', disabled }: 
                 className={[
                   'w-full px-3 py-2 text-sm text-left transition-colors',
                   active
-                    ? 'bg-[#f5a623]/15 text-[#f5a623] font-medium'
-                    : 'text-gray-300 hover:bg-[#1a1a35] hover:text-white',
+                    ? 'bg-[#ff732e]/15 text-[#ff732e] font-medium'
+                    : 'text-gray-300 hover:bg-[#383840] hover:text-white',
                 ].join(' ')}
               >
                 {active && (
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#f5a623] mr-2 mb-0.5" />
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#ff732e] mr-2 mb-0.5" />
                 )}
                 {opt.label}
               </button>

@@ -17,10 +17,10 @@ const empty = {
 function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="bg-[#0f0f1e] border border-[#1a1a30] rounded-2xl p-6 w-80 shadow-2xl">
+      <div className="bg-[#212126] border border-[#383840] rounded-2xl p-6 w-80 shadow-2xl">
         <p className="text-white text-sm mb-6 leading-relaxed">{message}</p>
         <div className="flex gap-3 justify-end">
-          <button onClick={onCancel} className="px-4 py-2 rounded-xl text-xs text-[#8888aa] hover:text-white hover:bg-[#1a1a30] transition-colors">Скасувати</button>
+          <button onClick={onCancel} className="px-4 py-2 rounded-xl text-xs text-[#9a9aa5] hover:text-white hover:bg-[#383840] transition-colors">Скасувати</button>
           <button onClick={onConfirm} className="px-4 py-2 rounded-xl text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300 transition-colors">Видалити</button>
         </div>
       </div>
@@ -91,29 +91,29 @@ export default function RegionsPage() {
       {/* Mobile cards */}
       <div className="sm:hidden space-y-3">
         {regions.map(r => (
-          <div key={r.id} className="card p-4 cursor-pointer hover:border-[#f5a623]/20 transition-colors"
+          <div key={r.id} className="card p-4 cursor-pointer hover:border-[#ff732e]/20 transition-colors"
             onClick={() => navigate(`/regions/${r.id}`)}>
             <div className="flex items-start justify-between mb-3">
               <div>
                 <div className="font-semibold text-white">{r.name}</div>
-                <div className="text-xs text-[#3a3a5c] font-mono mt-0.5">{r.icecast_mount}</div>
+                <div className="text-xs text-[#5a5a62] font-mono mt-0.5">{r.icecast_mount}</div>
               </div>
-              <span className={`badge mt-0.5 ${r.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#1a1a30] text-[#4a4a7a]'}`}>
+              <span className={`badge mt-0.5 ${r.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#383840] text-[#7a7a85]'}`}>
                 {r.enabled ? 'Активний' : 'Вимкнений'}
               </span>
             </div>
-            <div className="text-xs text-[#4a4a7a] mb-3">
+            <div className="text-xs text-[#7a7a85] mb-3">
               Crossfade: {r.crossfade_sec}с · {RETURN_MODES.find(m => m.value === r.return_mode)?.label}
             </div>
             <div className="flex gap-2">
               <button onClick={e => { e.stopPropagation(); navigate(`/regions/${r.id}`); }} className="btn-ghost flex-1 text-xs py-2">Відкрити</button>
               <button onClick={e => { e.stopPropagation(); openEdit(r); }} className="btn-ghost text-xs py-2 px-3">✎</button>
-              <button onClick={e => { e.stopPropagation(); del(r.id); }} className="btn-danger border border-[#1e1e3a] rounded-lg px-3 py-2">✕</button>
+              <button onClick={e => { e.stopPropagation(); del(r.id); }} className="btn-danger border border-[#383840] rounded-lg px-3 py-2">✕</button>
             </div>
           </div>
         ))}
         {!regions.length && (
-          <div className="card p-10 text-center text-[#4a4a7a] text-sm">Немає регіонів</div>
+          <div className="card p-10 text-center text-[#7a7a85] text-sm">Немає регіонів</div>
         )}
       </div>
 
@@ -122,7 +122,7 @@ export default function RegionsPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#1a1a30]">
+              <tr className="border-b border-[#383840]">
                 <th className="th">Назва</th>
                 <th className="th">Icecast маунт</th>
                 <th className="th">Статус</th>
@@ -133,17 +133,17 @@ export default function RegionsPage() {
             </thead>
             <tbody>
               {regions.map(r => (
-                <tr key={r.id} className="hover:bg-[#1a1a30]/40 transition-colors cursor-pointer"
+                <tr key={r.id} className="hover:bg-[#383840]/40 transition-colors cursor-pointer"
                   onClick={() => navigate(`/regions/${r.id}`)}>
-                  <td className="td font-semibold text-white hover:text-[#f5a623] transition-colors">{r.name}</td>
-                  <td className="td font-mono text-xs text-[#5a5a8a]">{r.icecast_mount}</td>
+                  <td className="td font-semibold text-white hover:text-[#ff732e] transition-colors">{r.name}</td>
+                  <td className="td font-mono text-xs text-[#7a7a85]">{r.icecast_mount}</td>
                   <td className="td">
-                    <span className={`badge ${r.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#1a1a30] text-[#4a4a7a]'}`}>
+                    <span className={`badge ${r.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#383840] text-[#7a7a85]'}`}>
                       {r.enabled ? 'Активний' : 'Вимкнений'}
                     </span>
                   </td>
-                  <td className="td text-[#5a5a8a]">{r.crossfade_sec}с</td>
-                  <td className="td text-[#5a5a8a] text-xs max-w-[180px] truncate">
+                  <td className="td text-[#7a7a85]">{r.crossfade_sec}с</td>
+                  <td className="td text-[#7a7a85] text-xs max-w-[180px] truncate">
                     {RETURN_MODES.find(m => m.value === r.return_mode)?.label}
                     {r.return_mode === 'timer' && ` (${r.return_timer_sec}с)`}
                   </td>
@@ -154,7 +154,7 @@ export default function RegionsPage() {
                 </tr>
               ))}
               {!regions.length && (
-                <tr><td colSpan={6} className="td text-center py-10 text-[#4a4a7a]">Немає регіонів</td></tr>
+                <tr><td colSpan={6} className="td text-center py-10 text-[#7a7a85]">Немає регіонів</td></tr>
               )}
             </tbody>
           </table>
@@ -165,34 +165,34 @@ export default function RegionsPage() {
       {modal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
           <div className="modal-box max-h-[90vh] overflow-y-auto">
-            <div className="px-5 pt-5 pb-4 border-b border-[#1a1a30]">
+            <div className="px-5 pt-5 pb-4 border-b border-[#383840]">
               <h2 className="text-base font-bold text-white">
                 {modal === 'create' ? 'Новий регіон' : 'Редагувати регіон'}
               </h2>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="text-xs text-[#4a4a7a] mb-1.5 block">Назва *</label>
+                <label className="text-xs text-[#7a7a85] mb-1.5 block">Назва *</label>
                 <input value={form.name} onChange={e => f('name', e.target.value)} className="input" placeholder="Схід" />
               </div>
               <div>
-                <label className="text-xs text-[#4a4a7a] mb-1.5 block">Slug (латиниця) *</label>
+                <label className="text-xs text-[#7a7a85] mb-1.5 block">Slug (латиниця) *</label>
                 <input value={form.slug}
                   onChange={e => f('slug', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
                   className="input" placeholder="east" />
               </div>
               <div>
-                <label className="text-xs text-[#4a4a7a] mb-1.5 block">Icecast маунт *</label>
+                <label className="text-xs text-[#7a7a85] mb-1.5 block">Icecast маунт *</label>
                 <input value={form.icecast_mount} onChange={e => f('icecast_mount', e.target.value)} className="input" placeholder="/region_east" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-[#4a4a7a] mb-1.5 block">Crossfade (сек)</label>
+                  <label className="text-xs text-[#7a7a85] mb-1.5 block">Crossfade (сек)</label>
                   <input type="number" min={0} max={10} value={form.crossfade_sec}
                     onChange={e => f('crossfade_sec', +e.target.value)} className="input" />
                 </div>
                 <div>
-                  <label className="text-xs text-[#4a4a7a] mb-1.5 block">Повернення в ефір</label>
+                  <label className="text-xs text-[#7a7a85] mb-1.5 block">Повернення в ефір</label>
                   <Select value={form.return_mode} onChange={e => f('return_mode', e.target.value)}>
                     {RETURN_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </Select>
@@ -200,13 +200,13 @@ export default function RegionsPage() {
               </div>
               {form.return_mode === 'timer' && (
                 <div>
-                  <label className="text-xs text-[#4a4a7a] mb-1.5 block">Таймер (сек)</label>
+                  <label className="text-xs text-[#7a7a85] mb-1.5 block">Таймер (сек)</label>
                   <input type="number" min={0} value={form.return_timer_sec}
                     onChange={e => f('return_timer_sec', +e.target.value)} className="input" />
                 </div>
               )}
               <label className="flex items-center gap-3 cursor-pointer py-1">
-                <div className={`w-9 h-5 rounded-full transition-colors relative ${form.enabled ? 'bg-[#f5a623]' : 'bg-[#1a1a30]'}`}
+                <div className={`w-9 h-5 rounded-full transition-colors relative ${form.enabled ? 'bg-[#ff732e]' : 'bg-[#383840]'}`}
                   onClick={() => f('enabled', !form.enabled)}>
                   <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.enabled ? 'left-4' : 'left-0.5'}`} />
                 </div>

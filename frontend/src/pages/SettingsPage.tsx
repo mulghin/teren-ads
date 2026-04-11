@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 
 const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => (
-  <div className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer ${value ? 'bg-[#f5a623]' : 'bg-[#1a1a30]'}`}
+  <div className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer ${value ? 'bg-[#ff732e]' : 'bg-[#383840]'}`}
     onClick={() => onChange(!value)}>
     <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${value ? 'left-4' : 'left-0.5'}`} />
   </div>
@@ -80,8 +80,8 @@ export default function SettingsPage() {
                 placeholder="500" className="input" />
             </Field>
           </div>
-          <div className="mt-1 p-3 bg-[#f5a623]/8 border border-[#f5a623]/15 rounded-xl">
-            <p className="text-xs text-[#f5a623]/70 leading-relaxed">
+          <div className="mt-1 p-3 bg-[#ff732e]/8 border border-[#ff732e]/15 rounded-xl">
+            <p className="text-xs text-[#ff732e]/70 leading-relaxed">
               Частоти 17 500 та 18 500 Hz вище порогу чутності та не будуть чутні в ефірі при 320 kbps.
             </p>
           </div>
@@ -117,7 +117,7 @@ export default function SettingsPage() {
           </Field>
           <div className="p-3 bg-blue-500/8 border border-blue-500/15 rounded-xl">
             <p className="text-xs text-blue-400/70 leading-relaxed">
-              Події: <code className="bg-[#0a0a15] px-1 rounded">ad_start</code>, <code className="bg-[#0a0a15] px-1 rounded">ad_end</code>, <code className="bg-[#0a0a15] px-1 rounded">silence_alert</code>, <code className="bg-[#0a0a15] px-1 rounded">source_switch</code>
+              Події: <code className="bg-[#121214] px-1 rounded">ad_start</code>, <code className="bg-[#121214] px-1 rounded">ad_end</code>, <code className="bg-[#121214] px-1 rounded">silence_alert</code>, <code className="bg-[#121214] px-1 rounded">source_switch</code>
             </p>
           </div>
         </Section>
@@ -133,7 +133,7 @@ export default function SettingsPage() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="card p-5">
-      <div className="text-xs font-semibold text-[#4a4a7a] uppercase tracking-wider mb-4 pb-3 border-b border-[#1a1a30]">{title}</div>
+      <div className="text-xs font-semibold text-[#7a7a85] uppercase tracking-wider mb-4 pb-3 border-b border-[#383840]">{title}</div>
       <div className="space-y-3">{children}</div>
     </div>
   );
@@ -142,7 +142,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      {label && <label className="text-xs text-[#5a5a8a] mb-1.5 block">{label}</label>}
+      {label && <label className="text-xs text-[#7a7a85] mb-1.5 block">{label}</label>}
       {children}
     </div>
   );

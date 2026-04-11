@@ -12,6 +12,8 @@ import ReportsPage from './pages/ReportsPage';
 const navItems = [
   { to: '/', label: 'Дашборд', icon: GridIcon },
   { to: '/regions', label: 'Регіони', icon: RadioIcon },
+  { to: '/playlists', label: 'Плейлисти', icon: MusicIcon },
+  { to: '/schedules', label: 'Розклад', icon: ClockIcon },
   { to: '/reports', label: 'Звіти', icon: ChartIcon },
   { to: '/logs', label: 'Логи', icon: LogIcon },
   { to: '/settings', label: 'Налаштування', icon: SettingsIcon },
@@ -22,7 +24,7 @@ export default function App() {
   const location = useLocation();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#07070f]">
+    <div className="flex h-screen overflow-hidden bg-[#17171a]">
       {/* Mobile overlay */}
       {open && (
         <div className="fixed inset-0 bg-black/60 z-20 sm:hidden" onClick={() => setOpen(false)} />
@@ -31,18 +33,18 @@ export default function App() {
       {/* Sidebar */}
       <nav className={`
         fixed sm:static inset-y-0 left-0 z-30 w-56 flex-shrink-0
-        bg-[#0a0a16] border-r border-[#1a1a30]
+        bg-[#121214] border-r border-[#383840]
         flex flex-col transition-transform duration-200
         ${open ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'}
       `}>
         {/* Logo */}
-        <div className="px-5 py-4 border-b border-[#1a1a30] flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#f5a623] flex items-center justify-center flex-shrink-0">
+        <div className="px-5 py-4 border-b border-[#383840] flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-[#ff732e] flex items-center justify-center flex-shrink-0">
             <span className="text-black font-black text-xs">TA</span>
           </div>
           <div>
             <div className="text-white font-bold text-sm leading-tight">Teren Ads</div>
-            <div className="text-[#4a4a7a] text-xs">Регіональна реклама</div>
+            <div className="text-[#7a7a85] text-xs">Регіональна реклама</div>
           </div>
         </div>
 
@@ -57,8 +59,8 @@ export default function App() {
               className={({ isActive }) =>
                 `flex items-center gap-3 mx-2 px-3 py-2.5 rounded-lg text-sm transition-all ` +
                 (isActive
-                  ? 'bg-[#f5a623]/10 text-[#f5a623] font-medium'
-                  : 'text-[#8888aa] hover:text-white hover:bg-[#1a1a30]')
+                  ? 'bg-[#ff732e]/10 text-[#ff732e] font-medium'
+                  : 'text-[#9a9aa5] hover:text-white hover:bg-[#383840]')
               }
             >
               <item.icon size={16} />
@@ -67,16 +69,16 @@ export default function App() {
           ))}
         </div>
 
-        <div className="px-5 py-3 border-t border-[#1a1a30] text-xs text-[#3a3a5c]">
-          v1.1.0 · Teren FM
+        <div className="px-5 py-3 border-t border-[#383840] text-xs text-[#5a5a62]">
+          v1.2.1 · Teren FM
         </div>
       </nav>
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile top bar */}
-        <div className="sm:hidden flex items-center gap-3 px-4 py-3 bg-[#0a0a16] border-b border-[#1a1a30]">
-          <button onClick={() => setOpen(true)} className="text-[#8888aa] hover:text-white">
+        <div className="sm:hidden flex items-center gap-3 px-4 py-3 bg-[#121214] border-b border-[#383840]">
+          <button onClick={() => setOpen(true)} className="text-[#9a9aa5] hover:text-white">
             <HamburgerIcon size={20} />
           </button>
           <div className="text-white font-semibold text-sm">Teren Ads</div>
