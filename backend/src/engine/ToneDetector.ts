@@ -31,9 +31,12 @@ class ToneDetector {
     const threshold = -30;
 
     // START tone detector
-    const spawnDetector = (hz: number, type: 'start' | 'stop') => {
+    // Spawn two staggered detectors per tone so reconnects don't create a blind window.
+    // Detector B starts 1s after A — when A drops and respawns, B is already listening.
+    const spawnDetector = (hz: number, type: 'start' | 'stop', instanceId = 0) => {
       const proc = spawn('ffmpeg', [
         '-reconnect', '1', '-reconnect_at_eof', '1', '-reconnect_streamed', '1',
+        '-reconnect_delay_max', '1',   // cap reconnect backoff to 1s
         '-i', sourceUrl,
         '-af', `bandpass=f=${hz}:width_type=h:w=200,silencedetect=n=${threshold}dB:d=${durationSec}`,
         '-f', 'null', '-',
@@ -52,17 +55,23 @@ class ToneDetector {
       proc.on('exit', () => {
         this.procs = this.procs.filter(p => p !== proc);
         if (this.running) {
+          // Fast respawn: 200ms instead of 2000ms to minimize blind window
           setTimeout(() => {
-            if (this.running) spawnDetector(hz, type);
-          }, 2000);
+            if (this.running) spawnDetector(hz, type, instanceId);
+          }, 200);
         }
       });
 
       return proc;
     };
 
-    spawnDetector(startHz, 'start');
-    spawnDetector(stopHz, 'stop');
+    // Two staggered detectors per frequency, 1s apart.
+    // When detector A drops and respawns (200ms), detector B is already active —
+    // so the "blind window" during stream pauses is eliminated.
+    spawnDetector(startHz, 'start', 0);
+    setTimeout(() => { if (this.running) spawnDetector(startHz, 'start', 1); }, 1000);
+    spawnDetector(stopHz, 'stop', 0);
+    setTimeout(() => { if (this.running) spawnDetector(stopHz, 'stop', 1); }, 1000);
   }
 
   private _handleTone(type: 'start' | 'stop') {
