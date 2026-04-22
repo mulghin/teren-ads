@@ -127,6 +127,28 @@ async function main() {
   });
 
   const isProd = process.env.NODE_ENV === 'production';
+
+  // In prod, serve the built SPA. FRONTEND_DIST lets the operator point to
+  // an explicit location (the Vite build isn't colocated with the compiled
+  // backend), falling back to the sibling `frontend/dist` for dev-ish
+  // layouts. Safe because static files never leak session data — and the
+  // /api prefix above is evaluated first, so it can't shadow API routes.
+  const frontendDist = process.env.FRONTEND_DIST
+    || path.resolve(process.cwd(), '../frontend/dist');
+  try {
+    const { accessSync, constants } = require('fs');
+    accessSync(path.join(frontendDist, 'index.html'), constants.R_OK);
+    console.log(`[static] Serving SPA from ${frontendDist}`);
+    app.use(express.static(frontendDist, { index: false, maxAge: '1h' }));
+    app.get('*', (req, res, next) => {
+      // Let /api and /uploads 404 normally — only serve index.html for SPA paths.
+      if (req.path.startsWith('/api') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next();
+      res.sendFile(path.join(frontendDist, 'index.html'));
+    });
+  } catch {
+    if (isProd) console.warn(`[static] No SPA build at ${frontendDist} — API-only mode`);
+  }
+
   app.use((err: any, req: any, res: any, next: any) => {
     const reqId = randomUUID().slice(0, 8);
     console.error(`[error ${reqId}]`, req.method, req.originalUrl, err);
