@@ -139,10 +139,14 @@ async function main() {
     const { accessSync, constants } = require('fs');
     accessSync(path.join(frontendDist, 'index.html'), constants.R_OK);
     console.log(`[static] Serving SPA from ${frontendDist}`);
+    // Assets have hashed filenames so they're safe to cache aggressively.
+    // index.html must NOT be cached — it's the shell that points at the
+    // current bundle, and a stale copy leaves clients on an old JS hash
+    // after a redeploy (operator just complained about missing UI fields).
     app.use(express.static(frontendDist, { index: false, maxAge: '1h' }));
     app.get('*', (req, res, next) => {
-      // Let /api and /uploads 404 normally — only serve index.html for SPA paths.
       if (req.path.startsWith('/api') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next();
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.sendFile(path.join(frontendDist, 'index.html'));
     });
   } catch {
