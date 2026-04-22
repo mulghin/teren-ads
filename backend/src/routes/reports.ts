@@ -131,8 +131,16 @@ router.get('/mediaplan/xlsx', async (req, res) => {
 
     const regions = await pool.query(`SELECT * FROM regions WHERE enabled=TRUE ORDER BY id`);
 
+    const usedSheetNames = new Set<string>();
     for (const region of regions.rows) {
-      const sheet = workbook.addWorksheet(region.name.slice(0, 31));
+      const cleaned = String(region.name || '').replace(/[\\\/\?\*\[\]:]/g, ' ').trim() || `region-${region.id}`;
+      let baseName = cleaned.slice(0, 31);
+      if (usedSheetNames.has(baseName)) {
+        const suffix = ` #${region.id}`;
+        baseName = cleaned.slice(0, Math.max(0, 31 - suffix.length)) + suffix;
+      }
+      usedSheetNames.add(baseName);
+      const sheet = workbook.addWorksheet(baseName);
 
       // Header style
       const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF2563EB' } };

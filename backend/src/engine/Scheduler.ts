@@ -14,7 +14,7 @@ class Scheduler {
   }
 
   async reload() {
-    this.tasks.forEach(t => t.stop());
+    this.tasks.forEach(t => { try { t.stop(); (t as any).destroy?.(); } catch {} });
     this.tasks = [];
 
     const res = await pool.query(`
@@ -36,10 +36,15 @@ class Scheduler {
     if (!times.length) return;
 
     const days = row.days === 'all' ? '0-6' : this.parseDays(row.days);
+    if (!days) {
+      console.warn(`[Scheduler] schedule id=${row.id} has no valid days — skipped`);
+      return;
+    }
 
     for (const time of times) {
+      if (typeof time !== 'string' || !/^([0-9]{1,2}):([0-9]{2})$/.test(time)) continue;
       const [h, m] = time.split(':').map(Number);
-      if (isNaN(h) || isNaN(m)) continue;
+      if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) continue;
 
       const expr = `${m} ${h} * * ${days}`;
       try {
@@ -69,14 +74,27 @@ class Scheduler {
   }
 
   stop() {
-    this.tasks.forEach(t => t.stop());
+    this.tasks.forEach(t => { try { t.stop(); (t as any).destroy?.(); } catch {} });
     this.tasks = [];
   }
 
   private parseDays(days: string): string {
-    return days.split(',')
-      .map(d => DAY_MAP[d.trim().toLowerCase()] ?? d)
-      .join(',');
+    const mapped: number[] = [];
+    for (const raw of days.split(',')) {
+      const token = raw.trim().toLowerCase();
+      if (!token) continue;
+      if (token in DAY_MAP) {
+        mapped.push(DAY_MAP[token]);
+        continue;
+      }
+      const n = parseInt(token, 10);
+      if (Number.isFinite(n) && n >= 0 && n <= 6) {
+        mapped.push(n);
+        continue;
+      }
+      console.warn(`[Scheduler] Unknown day token "${raw}" — skipped`);
+    }
+    return mapped.length ? [...new Set(mapped)].sort().join(',') : '';
   }
 }
 

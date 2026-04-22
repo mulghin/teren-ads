@@ -6,14 +6,32 @@ import { io, Socket } from 'socket.io-client';
 const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
 
 let globalSocket: Socket | null = null;
+let globalSocketKey: string | undefined;
 
 function getSocket(): Socket {
+  if (globalSocket && globalSocketKey !== API_KEY) {
+    try { globalSocket.disconnect(); } catch {}
+    globalSocket = null;
+  }
   if (!globalSocket) {
     globalSocket = io({
       auth: API_KEY ? { token: API_KEY } : undefined,
     });
+    globalSocketKey = API_KEY;
   }
   return globalSocket;
+}
+
+export function disconnectSocket() {
+  if (globalSocket) {
+    try { globalSocket.disconnect(); } catch {}
+    globalSocket = null;
+    globalSocketKey = undefined;
+  }
+}
+
+if (typeof import.meta.hot !== 'undefined') {
+  import.meta.hot.dispose(() => disconnectSocket());
 }
 
 export function useSocket() {

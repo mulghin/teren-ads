@@ -5,8 +5,12 @@ import { regionManager } from './engine/RegionManager';
 let io: IOServer | null = null;
 
 export function initSocket(server: HttpServer) {
+  const corsOrigin = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
   io = new IOServer(server, {
-    cors: { origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }
+    cors: { origin: corsOrigin }
   });
 
   // Authenticate socket connections via API key (same as HTTP)

@@ -1,18 +1,29 @@
 import { Request, Response, NextFunction } from 'express';
 
-/**
- * API key authentication middleware.
- * Set API_KEY environment variable to enable auth.
- * If API_KEY is not set, auth is skipped (development mode).
- */
+const API_KEY = process.env.API_KEY;
+const INSECURE_NO_AUTH = process.env.INSECURE_NO_AUTH === '1';
+
+if (!API_KEY && !INSECURE_NO_AUTH) {
+  console.error(
+    '[auth] FATAL: API_KEY env var is required. ' +
+    'Set API_KEY=<secret> or, for local dev only, INSECURE_NO_AUTH=1.'
+  );
+  process.exit(1);
+}
+
+if (!API_KEY && INSECURE_NO_AUTH) {
+  console.warn('[auth] WARNING: INSECURE_NO_AUTH=1 — API is unauthenticated.');
+}
+
 export function apiAuth(req: Request, res: Response, next: NextFunction) {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) return next(); // Dev mode: no auth required
+  if (!API_KEY) return next();
 
   const header = req.headers.authorization;
-  const provided = header?.startsWith('Bearer ') ? header.slice(7) : req.headers['x-api-key'] as string;
+  const provided = header?.startsWith('Bearer ')
+    ? header.slice(7)
+    : (req.headers['x-api-key'] as string | undefined);
 
-  if (!provided || provided !== apiKey) {
+  if (!provided || provided !== API_KEY) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   next();

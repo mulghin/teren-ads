@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, uploadFiles } from '../api';
-import { Select } from '../components/Select';
+import {
+  Badge,
+  Button,
+  DropdownSelect,
+  Field,
+  Icon,
+  Modal,
+  PageHeader,
+  Tabs,
+  Toggle,
+  useToast,
+} from '../components/ui';
 
 const BACKEND = '';
 const DAYS_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
@@ -12,32 +23,14 @@ const fmtDur = (sec: number) => {
   return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
-function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="bg-[#212126] border border-[#383840] rounded-2xl p-6 w-80 shadow-2xl">
-        <p className="text-white text-sm mb-6 leading-relaxed">{message}</p>
-        <div className="flex gap-3 justify-end">
-          <button onClick={onCancel}
-            className="px-4 py-2 rounded-xl text-xs text-[#9a9aa5] hover:text-white hover:bg-[#383840] transition-colors">
-            Скасувати
-          </button>
-          <button onClick={onConfirm}
-            className="px-4 py-2 rounded-xl text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300 transition-colors">
-            Видалити
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── PLAYLISTS TAB ───────────────────────────────────────────────────────────
 
 function PlaylistsTab({ regionId }: { regionId: number }) {
+  const notify = useToast();
   const [playlists, setPlaylists] = useState<any[]>([]);
   const [selected, setSelected] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState('ad');
   const [creating, setCreating] = useState(false);
@@ -47,13 +40,14 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
   const [audioDuration, setAudioDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [confirm, setConfirm] = useState<null | { title: string; body: string; action: () => Promise<void> }>(null);
 
   const loadPlaylists = async () => setPlaylists(await api.getPlaylists(regionId));
   const loadItems = async (id: number) => { const p = await api.getPlaylist(id); setItems(p.items || []); };
 
   useEffect(() => { loadPlaylists(); }, [regionId]);
   useEffect(() => { if (selected) loadItems(selected.id); }, [selected?.id]);
+  useEffect(() => () => { audioRef.current?.pause(); }, []);
 
   const playItem = (item: any) => {
     if (audioRef.current) {
@@ -75,33 +69,48 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
     audio.onerror = () => { setPlayingItem(null); setCurrentTime(0); setAudioDuration(0); };
   };
 
-  useEffect(() => () => { audioRef.current?.pause(); }, []);
+  const seek = (val: number) => { if (audioRef.current) audioRef.current.currentTime = val; setCurrentTime(val); };
+
+  const openCreate = () => { setNewName(''); setNewType('ad'); setCreateOpen(true); };
 
   const create = async () => {
     if (!newName.trim()) return;
     setCreating(true);
     try {
       const p = await api.createPlaylist({ name: newName, type: newType, shuffle: false, region_id: regionId });
-      await loadPlaylists(); setSelected(p); setNewName('');
+      await loadPlaylists(); setSelected(p); setCreateOpen(false);
+      notify({ title: 'Плейлист створено', tone: 'success', icon: 'check' });
+    } catch (e: any) {
+      notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
     } finally { setCreating(false); }
   };
 
-  const del = (id: number) => {
-    setConfirm({ message: 'Видалити плейлист разом з усіма файлами?', onConfirm: async () => {
-      setConfirm(null);
-      await api.deletePlaylist(id);
-      if (selected?.id === id) setSelected(null);
+  const askDeletePlaylist = (p: any) => setConfirm({
+    title: 'Видалити плейлист?',
+    body: `«${p.name}» буде видалено разом з усіма файлами.`,
+    action: async () => {
+      await api.deletePlaylist(p.id);
+      if (selected?.id === p.id) setSelected(null);
       await loadPlaylists();
-    }});
-  };
+      notify({ title: 'Плейлист видалено', tone: 'success', icon: 'check' });
+    },
+  });
 
-  const delItem = (itemId: number, filename: string) => {
-    setConfirm({ message: `Видалити файл «${filename}»?`, onConfirm: async () => {
-      setConfirm(null);
-      if (playingItem?.id === itemId) playItem(playingItem);
-      await api.deleteItem(selected.id, itemId);
+  const askDeleteItem = (item: any) => setConfirm({
+    title: 'Видалити файл?',
+    body: `«${item.filename}» буде видалено з плейлиста.`,
+    action: async () => {
+      if (playingItem?.id === item.id) playItem(playingItem);
+      await api.deleteItem(selected.id, item.id);
       await loadItems(selected.id); await loadPlaylists();
-    }});
+    },
+  });
+
+  const doConfirm = async () => {
+    if (!confirm) return;
+    try { await confirm.action(); }
+    catch (e: any) { notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' }); }
+    finally { setConfirm(null); }
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -111,6 +120,9 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
     try {
       await uploadFiles(selected.id, files);
       await loadItems(selected.id); await loadPlaylists();
+      notify({ title: `Завантажено ${files.length} файл(ів)`, tone: 'success', icon: 'check' });
+    } catch (e: any) {
+      notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
     } finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
   };
 
@@ -124,130 +136,246 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
   const totalDur = items.reduce((s, i) => s + (i.duration_sec || 0), 0);
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
-
-      {/* Sidebar */}
-      <div className="flex flex-col w-64 flex-shrink-0 border-r border-[#383840] p-4 overflow-hidden">
-        <div className="card p-3 space-y-2 flex-shrink-0 mb-3">
-          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Назва плейлиста"
-            className="input text-sm" onKeyDown={e => e.key === 'Enter' && create()} />
-          <div className="grid grid-cols-2 gap-2">
-            <Select value={newType} onChange={e => setNewType(e.target.value)}>
-              <option value="ad">📣 Реклама</option>
-              <option value="filler">🎵 Філер</option>
-            </Select>
-            <button onClick={create} disabled={creating || !newName.trim()} className="btn-primary text-xs py-2">
-              {creating ? '...' : 'Створити'}
-            </button>
-          </div>
+    <div style={{ padding: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Плейлисти регіону</h3>
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>
+            Реклама та філери, прив'язані до цього регіону
+          </p>
         </div>
-        <div className="flex-1 overflow-y-auto space-y-1">
-          {playlists.map(p => (
-            <div key={p.id} onClick={() => setSelected(p)}
-              className={`rounded-xl px-3 py-3 cursor-pointer flex items-center justify-between group transition-all border ` +
-                (selected?.id === p.id
-                  ? 'bg-[#ff732e]/8 border-[#ff732e]/25 text-[#ff732e]'
-                  : 'border-transparent hover:bg-[#383840] text-[#9a9aa5] hover:text-white')}>
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{p.name}</div>
-                <div className="text-xs text-[#7a7a85] mt-0.5">{p.type === 'ad' ? '📣' : '🎵'} {p.item_count} файлів</div>
-              </div>
-              <button onClick={e => { e.stopPropagation(); del(p.id); }}
-                className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 text-sm ml-2 flex-shrink-0 transition-opacity">✕</button>
-            </div>
-          ))}
-          {!playlists.length && <div className="text-center py-6 text-[#5a5a62] text-sm">Немає плейлистів</div>}
-        </div>
+        <Button variant="primary" icon="plus" onClick={openCreate}>Новий плейлист</Button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden p-4">
-        {!selected ? (
-          <div className="card flex-1 flex items-center justify-center text-[#7a7a85] text-sm">
-            Оберіть або створіть плейлист
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-base font-bold text-white truncate">{selected.name}</h3>
-                {items.length > 0 && <div className="text-xs text-[#7a7a85] mt-0.5">{items.length} файлів · {fmtDur(totalDur)}</div>}
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer flex-shrink-0" onClick={toggleShuffle}>
-                <div className={`w-8 h-4 rounded-full transition-colors relative ${selected.shuffle ? 'bg-[#ff732e]' : 'bg-[#383840]'}`}>
-                  <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${selected.shuffle ? 'left-4' : 'left-0.5'}`} />
-                </div>
-                <span className="text-xs text-[#9a9aa5]">Shuffle</span>
-              </label>
-              <input ref={fileRef} type="file" multiple accept="audio/*" className="hidden" onChange={handleUpload} />
-              <button onClick={() => fileRef.current?.click()} disabled={uploading} className="btn-primary text-xs py-2">
-                {uploading ? 'Завантаження...' : '+ Файли'}
-              </button>
+      <div className="split-sidebar narrow">
+        <div className="card" style={{ padding: 6, maxHeight: 520, overflow: 'auto' }}>
+          {playlists.length === 0 ? (
+            <div style={{ padding: '30px 12px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 12 }}>
+              Немає плейлистів
             </div>
-            <div className="card flex-1 overflow-hidden flex flex-col min-h-0">
-              {items.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="text-center"><div className="text-3xl mb-3">🎵</div>
-                    <div className="text-[#7a7a85] text-sm">Натисніть «+ Файли» для завантаження</div></div>
-                </div>
-              ) : (
-                <>
-                  <div className="overflow-auto flex-1">
-                    <table className="w-full text-sm">
-                      <thead className="sticky top-0 bg-[#212126]">
-                        <tr className="border-b border-[#383840]">
-                          <th className="th w-10">#</th>
-                          <th className="th w-8"></th>
-                          <th className="th">Файл</th>
-                          <th className="th text-right w-20">Тривалість</th>
-                          <th className="th w-10"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((item, i) => (
-                          <tr key={item.id} className={`transition-colors ${playingItem?.id === item.id ? 'bg-[#ff732e]/5' : 'hover:bg-[#383840]/40'}`}>
-                            <td className="td text-[#7a7a85] w-10">{i + 1}</td>
-                            <td className="td w-8">
-                              <button onClick={() => playItem(item)}
-                                className={`text-base leading-none transition-colors ${playingItem?.id === item.id ? 'text-[#ff732e]' : 'text-[#7a7a85] hover:text-white'}`}>
-                                {playingItem?.id === item.id ? '⏹' : '▶'}
-                              </button>
-                            </td>
-                            <td className="td font-medium text-white">
-                              <div className="truncate max-w-[200px]" title={item.filename}>{item.filename}</div>
-                            </td>
-                            <td className="td text-right text-[#7a7a85] font-mono text-xs w-20">{fmtDur(item.duration_sec)}</td>
-                            <td className="td w-10 text-right">
-                              <button onClick={() => delItem(item.id, item.filename)} className="text-red-400 hover:text-red-300 text-xs">✕</button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {playingItem && (
-                    <div className="border-t border-[#383840] px-4 py-3 flex-shrink-0 bg-[#121214]">
-                      <div className="flex items-center gap-3">
-                        <button onClick={() => playItem(playingItem)} className="text-[#ff732e] text-base flex-shrink-0">⏹</button>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs text-[#9a9aa5] truncate mb-1">{playingItem.filename}</div>
-                          <input type="range" min={0} max={audioDuration || 1} step={0.1} value={currentTime}
-                            onChange={e => { const v = Number(e.target.value); if (audioRef.current) audioRef.current.currentTime = v; setCurrentTime(v); }}
-                            className="w-full h-1 accent-[#ff732e] cursor-pointer" />
-                        </div>
-                        <div className="text-xs font-mono text-[#7a7a85] flex-shrink-0 w-20 text-right">
-                          {fmtDur(currentTime)} / {fmtDur(audioDuration)}
-                        </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {playlists.map(p => {
+                const active = selected?.id === p.id;
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => setSelected(p)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                      background: active ? 'var(--accent-dim)' : 'transparent',
+                      border: active ? '1px solid rgba(255,106,26,0.25)' : '1px solid transparent',
+                    }}
+                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                    onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <div style={{
+                      width: 26, height: 26, borderRadius: 6, flex: 'none',
+                      display: 'grid', placeItems: 'center',
+                      background: p.type === 'ad' ? 'var(--accent-dim)' : 'var(--info-dim)',
+                      color: p.type === 'ad' ? 'var(--accent)' : 'var(--info)',
+                    }}>
+                      <Icon name={p.type === 'ad' ? 'megaphone' : 'playlist'} size={13} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: active ? 'var(--accent)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.name}
+                      </div>
+                      <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                        {p.item_count || 0} файл(ів)
                       </div>
                     </div>
-                  )}
-                </>
-              )}
+                    <Button variant="ghost" size="sm" icon="trash" onClick={(e) => { e.stopPropagation(); askDeletePlaylist(p); }} />
+                  </div>
+                );
+              })}
             </div>
-          </>
-        )}
+          )}
+        </div>
+
+        <div className="card" style={{ padding: 0, minHeight: 400, display: 'flex', flexDirection: 'column' }}>
+          {!selected ? (
+            <div style={{ padding: '60px 24px', textAlign: 'center', flex: 1, display: 'grid', placeItems: 'center' }}>
+              <div>
+                <div style={{ color: 'var(--text-muted)', marginBottom: 8 }}>
+                  <Icon name="playlist" size={28} />
+                </div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                  Оберіть плейлист або створіть новий
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{
+                padding: 16, borderBottom: '1px solid var(--border)',
+                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{selected.name}</h4>
+                    <Badge tone={selected.type === 'ad' ? 'accent' : 'info'}>
+                      {selected.type === 'ad' ? 'Реклама' : 'Філер'}
+                    </Badge>
+                  </div>
+                  <div className="mono" style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                    {items.length} файл(ів) · {fmtDur(totalDur)}
+                  </div>
+                </div>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={toggleShuffle}>
+                  <div style={{
+                    width: 32, height: 18, borderRadius: 999,
+                    background: selected.shuffle ? 'var(--accent)' : 'var(--bg-elevated)',
+                    position: 'relative', flex: 'none',
+                  }}>
+                    <div style={{
+                      position: 'absolute', top: 2, left: selected.shuffle ? 16 : 2,
+                      width: 14, height: 14, borderRadius: 999, background: '#fff',
+                      transition: 'left 0.15s',
+                    }} />
+                  </div>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Shuffle</span>
+                </label>
+
+                <input ref={fileRef} type="file" multiple accept="audio/*" style={{ display: 'none' }} onChange={handleUpload} />
+                <Button variant="primary" size="sm" icon="upload" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                  {uploading ? 'Завантаження…' : 'Файли'}
+                </Button>
+              </div>
+
+              <div style={{ flex: 1, overflow: 'auto', maxHeight: 400 }}>
+                {items.length === 0 ? (
+                  <div style={{ padding: '50px 24px', textAlign: 'center' }}>
+                    <div style={{ color: 'var(--text-muted)', marginBottom: 8 }}>
+                      <Icon name="upload" size={24} />
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+                      Натисніть «Файли», щоб завантажити
+                    </div>
+                  </div>
+                ) : (
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 36 }}>#</th>
+                        <th style={{ width: 36 }}></th>
+                        <th>Файл</th>
+                        <th className="col-right" style={{ width: 90 }}>Тривал.</th>
+                        <th style={{ width: 50 }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((item, i) => {
+                        const isPlaying = playingItem?.id === item.id;
+                        return (
+                          <tr key={item.id} style={{ background: isPlaying ? 'var(--accent-dim)' : undefined }}>
+                            <td className="col-muted mono" style={{ fontSize: 11 }}>{i + 1}</td>
+                            <td>
+                              <Button
+                                variant="ghost" size="sm"
+                                icon={isPlaying ? 'stop' : 'play'}
+                                onClick={() => playItem(item)}
+                                style={isPlaying ? { color: 'var(--accent)' } : undefined}
+                              />
+                            </td>
+                            <td style={{ fontWeight: 500, color: isPlaying ? 'var(--accent)' : undefined }}>
+                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360 }} title={item.filename}>
+                                {item.filename}
+                              </div>
+                            </td>
+                            <td className="col-right col-muted mono" style={{ fontSize: 11 }}>{fmtDur(item.duration_sec)}</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <Button variant="ghost" size="sm" icon="trash" onClick={() => askDeleteItem(item)} />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {playingItem && (
+                <div style={{
+                  padding: '10px 14px', borderTop: '1px solid var(--border)',
+                  background: 'var(--bg-elevated)',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}>
+                  <Button variant="ghost" size="sm" icon="stop" onClick={() => playItem(playingItem)} style={{ color: 'var(--accent)' }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {playingItem.filename}
+                    </div>
+                    <input
+                      type="range" min={0} max={audioDuration || 1} step={0.1}
+                      value={currentTime}
+                      onChange={e => seek(Number(e.target.value))}
+                      style={{ width: '100%', accentColor: 'var(--accent)' }}
+                    />
+                  </div>
+                  <div className="mono tabular" style={{ fontSize: 11, color: 'var(--text-muted)', width: 88, textAlign: 'right' }}>
+                    {fmtDur(currentTime)} / {fmtDur(audioDuration)}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
+
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Новий плейлист"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setCreateOpen(false)}>Скасувати</Button>
+            <Button variant="primary" onClick={create} disabled={!newName.trim() || creating}>
+              {creating ? 'Створення…' : 'Створити'}
+            </Button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Field label="Назва" required>
+            <input
+              className="input" autoFocus
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              placeholder="Наприклад: Ранковий блок"
+              onKeyDown={e => { if (e.key === 'Enter') create(); }}
+            />
+          </Field>
+          <Field label="Тип">
+            <DropdownSelect
+              value={newType}
+              onChange={setNewType}
+              options={[
+                { value: 'ad',     label: 'Реклама' },
+                { value: 'filler', label: 'Філер' },
+              ]}
+            />
+          </Field>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!confirm}
+        onClose={() => setConfirm(null)}
+        title={confirm?.title || ''}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirm(null)}>Скасувати</Button>
+            <Button variant="danger" icon="trash" onClick={doConfirm}>Видалити</Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
+          {confirm?.body}
+        </p>
+      </Modal>
     </div>
   );
 }
@@ -260,12 +388,13 @@ const emptySchedule = {
 };
 
 function SchedulesTab({ regionId }: { regionId: number }) {
+  const notify = useToast();
   const [schedules, setSchedules] = useState<any[]>([]);
   const [allPlaylists, setAllPlaylists] = useState<any[]>([]);
   const [modal, setModal] = useState<null | 'create' | number>(null);
   const [form, setForm] = useState({ ...emptySchedule });
   const [saving, setSaving] = useState(false);
-  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [confirm, setConfirm] = useState<number | null>(null);
 
   const load = async () => {
     const [s, p] = await Promise.all([api.getRegionSchedules(regionId), api.getPlaylists()]);
@@ -297,14 +426,21 @@ function SchedulesTab({ regionId }: { regionId: number }) {
       if (modal === 'create') await api.createRegionSchedule(regionId, data);
       else await api.updateRegionSchedule(regionId, modal as number, data);
       setModal(null); await load();
+      notify({ title: 'Збережено', tone: 'success', icon: 'check' });
+    } catch (e: any) {
+      notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
     } finally { setSaving(false); }
   };
 
-  const del = (id: number) => {
-    setConfirm({ message: 'Видалити запис розкладу?', onConfirm: async () => {
-      setConfirm(null);
-      await api.deleteRegionSchedule(regionId, id); await load();
-    }});
+  const doDelete = async () => {
+    if (!confirm) return;
+    try {
+      await api.deleteRegionSchedule(regionId, confirm);
+      await load();
+      notify({ title: 'Видалено', tone: 'success', icon: 'check' });
+    } catch (e: any) {
+      notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
+    } finally { setConfirm(null); }
   };
 
   const toggleDay = (day: string) => {
@@ -323,52 +459,53 @@ function SchedulesTab({ regionId }: { regionId: number }) {
   };
 
   return (
-    <div className="p-4 sm:p-6">
-      {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
-      <div className="flex items-center justify-between mb-5">
+    <div style={{ padding: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h3 className="text-base font-semibold text-white">Розклад за часом</h3>
-          <p className="text-xs text-[#7a7a85] mt-1">
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Розклад за часом</h3>
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)', maxWidth: 620 }}>
             Коли тоновий сигнал приходить у вказаний час ±допуск — автоматично запускається цей плейлист
           </p>
         </div>
-        <button onClick={openCreate} className="btn-primary text-sm">+ Додати</button>
+        <Button variant="primary" icon="plus" onClick={openCreate}>Додати запис</Button>
       </div>
 
       {schedules.length === 0 ? (
-        <div className="card p-10 text-center text-[#7a7a85] text-sm">Немає записів розкладу</div>
+        <div className="card" style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
+          Немає записів розкладу
+        </div>
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="table-wrap">
+          <table className="tbl">
             <thead>
-              <tr className="border-b border-[#383840]">
-                <th className="th">Назва</th>
-                <th className="th">Час</th>
-                <th className="th">Допуск</th>
-                <th className="th">Дні</th>
-                <th className="th">Плейлист</th>
-                <th className="th">Філер</th>
-                <th className="th w-20">Стан</th>
-                <th className="th w-24"></th>
+              <tr>
+                <th>Назва</th>
+                <th>Час</th>
+                <th>Допуск</th>
+                <th>Дні</th>
+                <th>Плейлист</th>
+                <th>Філер</th>
+                <th>Стан</th>
+                <th style={{ width: 100 }}></th>
               </tr>
             </thead>
             <tbody>
               {schedules.map(s => (
-                <tr key={s.id} className="hover:bg-[#383840]/40 transition-colors">
-                  <td className="td text-white">{s.label || '—'}</td>
-                  <td className="td font-mono text-[#ff732e] font-semibold">{s.time_hhmm}</td>
-                  <td className="td text-[#7a7a85]">±{s.tolerance_minutes} хв</td>
-                  <td className="td text-[#7a7a85] text-xs">{fmtDays(s.days)}</td>
-                  <td className="td text-white">{s.playlist_name}</td>
-                  <td className="td text-[#7a7a85] text-xs">{s.filler_playlist_name || '—'}</td>
-                  <td className="td">
-                    <span className={`badge ${s.is_active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#383840] text-[#7a7a85]'}`}>
-                      {s.is_active ? 'Активний' : 'Вимкнений'}
-                    </span>
+                <tr key={s.id}>
+                  <td style={{ fontWeight: 500 }}>{s.label || '—'}</td>
+                  <td className="mono" style={{ color: 'var(--accent)', fontWeight: 600 }}>{s.time_hhmm}</td>
+                  <td className="col-muted">±{s.tolerance_minutes} хв</td>
+                  <td className="col-muted" style={{ fontSize: 12 }}>{fmtDays(s.days)}</td>
+                  <td>{s.playlist_name}</td>
+                  <td className="col-muted">{s.filler_playlist_name || '—'}</td>
+                  <td>
+                    <Badge tone={s.is_active ? 'success' : 'neutral'} dot>
+                      {s.is_active ? 'активний' : 'вимкнений'}
+                    </Badge>
                   </td>
-                  <td className="td text-right">
-                    <button onClick={() => openEdit(s)} className="text-blue-400 hover:text-blue-300 text-xs mr-3">Редаг.</button>
-                    <button onClick={() => del(s.id)} className="text-red-400 hover:text-red-300 text-xs">Видалити</button>
+                  <td style={{ textAlign: 'right' }}>
+                    <Button variant="ghost" size="sm" icon="edit" onClick={() => openEdit(s)} />
+                    <Button variant="ghost" size="sm" icon="trash" onClick={() => setConfirm(s.id)} />
                   </td>
                 </tr>
               ))}
@@ -377,73 +514,100 @@ function SchedulesTab({ regionId }: { regionId: number }) {
         </div>
       )}
 
-      {modal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
-          <div className="modal-box max-h-[90vh] overflow-y-auto">
-            <div className="px-5 pt-5 pb-4 border-b border-[#383840]">
-              <h2 className="text-base font-bold text-white">{modal === 'create' ? 'Новий запис розкладу' : 'Редагувати'}</h2>
-            </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="text-xs text-[#7a7a85] mb-1.5 block">Назва (опціонально)</label>
-                <input value={form.label} onChange={e => f('label', e.target.value)} className="input" placeholder="Обід, Ранок…" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-[#7a7a85] mb-1.5 block">Час запуску *</label>
-                  <input type="time" value={form.time_hhmm} onChange={e => f('time_hhmm', e.target.value)} className="input" />
-                </div>
-                <div>
-                  <label className="text-xs text-[#7a7a85] mb-1.5 block">Допуск (хвилин)</label>
-                  <input type="number" min={0} max={60} value={form.tolerance_minutes}
-                    onChange={e => f('tolerance_minutes', e.target.value)} className="input" />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-[#7a7a85] mb-2 block">Дні тижня</label>
-                <div className="flex gap-1.5 flex-wrap">
-                  {DAYS_LABELS.map((d, i) => (
-                    <button key={i} type="button" onClick={() => toggleDay(String(i + 1))}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ` +
-                        (form.days.includes(String(i + 1))
-                          ? 'bg-[#ff732e]/15 border-[#ff732e]/40 text-[#ff732e]'
-                          : 'bg-transparent border-[#383840] text-[#7a7a85] hover:border-[#5a5a62] hover:text-[#9a9aa5]')}>
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-[#7a7a85] mb-1.5 block">Плейлист *</label>
-                <Select value={form.playlist_id} onChange={e => f('playlist_id', e.target.value)}>
-                  <option value="">— оберіть —</option>
-                  {allPlaylists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </Select>
-              </div>
-              <div>
-                <label className="text-xs text-[#7a7a85] mb-1.5 block">Філер (опціонально)</label>
-                <Select value={form.filler_playlist_id} onChange={e => f('filler_playlist_id', e.target.value)}>
-                  <option value="">— без філера —</option>
-                  {allPlaylists.filter(p => p.type === 'filler').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </Select>
-              </div>
-              <label className="flex items-center gap-3 cursor-pointer py-1">
-                <div className={`w-9 h-5 rounded-full transition-colors relative ${form.is_active ? 'bg-[#ff732e]' : 'bg-[#383840]'}`}
-                  onClick={() => f('is_active', !form.is_active)}>
-                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.is_active ? 'left-4' : 'left-0.5'}`} />
-                </div>
-                <span className="text-sm text-gray-300">Активний</span>
-              </label>
-            </div>
-            <div className="px-5 pb-5 flex gap-3">
-              <button onClick={save} disabled={saving || !valid} className="btn-primary flex-1">
-                {saving ? 'Збереження...' : 'Зберегти'}
-              </button>
-              <button onClick={() => setModal(null)} className="btn-ghost">Скасувати</button>
-            </div>
+      <Modal
+        open={!!modal}
+        onClose={() => setModal(null)}
+        title={modal === 'create' ? 'Новий запис розкладу' : 'Редагувати запис'}
+        width={520}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setModal(null)}>Скасувати</Button>
+            <Button variant="primary" onClick={save} disabled={!valid || saving}>
+              {saving ? 'Збереження…' : 'Зберегти'}
+            </Button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Field label="Назва (опціонально)">
+            <input className="input" value={form.label} onChange={e => f('label', e.target.value)} placeholder="Обід, Ранок…" />
+          </Field>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Час запуску" required>
+              <input type="time" className="input" value={form.time_hhmm} onChange={e => f('time_hhmm', e.target.value)} />
+            </Field>
+            <Field label="Допуск, хв">
+              <input
+                type="number" min={0} max={60}
+                className="input"
+                value={form.tolerance_minutes}
+                onChange={e => f('tolerance_minutes', e.target.value)}
+              />
+            </Field>
           </div>
+          <Field label="Дні тижня">
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {DAYS_LABELS.map((d, i) => {
+                const active = form.days.includes(String(i + 1));
+                return (
+                  <button
+                    key={i} type="button"
+                    onClick={() => toggleDay(String(i + 1))}
+                    style={{
+                      padding: '6px 12px', borderRadius: 8,
+                      fontSize: 12, fontWeight: 500,
+                      cursor: 'pointer',
+                      background: active ? 'var(--accent-dim)' : 'transparent',
+                      border: `1px solid ${active ? 'rgba(255,106,26,0.4)' : 'var(--border)'}`,
+                      color: active ? 'var(--accent)' : 'var(--text-secondary)',
+                      transition: 'all 0.12s',
+                    }}
+                  >
+                    {d}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+          <Field label="Плейлист" required>
+            <DropdownSelect
+              value={form.playlist_id}
+              onChange={v => f('playlist_id', v)}
+              options={[
+                { value: '', label: '— оберіть —' },
+                ...allPlaylists.map(p => ({ value: String(p.id), label: p.name })),
+              ]}
+            />
+          </Field>
+          <Field label="Філер (опціонально)">
+            <DropdownSelect
+              value={form.filler_playlist_id}
+              onChange={v => f('filler_playlist_id', v)}
+              options={[
+                { value: '', label: '— без філера —' },
+                ...allPlaylists.filter(p => p.type === 'filler').map(p => ({ value: String(p.id), label: p.name })),
+              ]}
+            />
+          </Field>
+          <Toggle label="Активний" value={form.is_active} onChange={v => f('is_active', v)} />
         </div>
-      )}
+      </Modal>
+
+      <Modal
+        open={confirm !== null}
+        onClose={() => setConfirm(null)}
+        title="Видалити запис?"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirm(null)}>Скасувати</Button>
+            <Button variant="danger" icon="trash" onClick={doDelete}>Видалити</Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
+          Дію неможливо скасувати.
+        </p>
+      </Modal>
     </div>
   );
 }
@@ -451,11 +615,12 @@ function SchedulesTab({ regionId }: { regionId: number }) {
 // ─── ASSIGNMENTS TAB ─────────────────────────────────────────────────────────
 
 function AssignmentsTab({ regionId }: { regionId: number }) {
+  const notify = useToast();
   const [assignments, setAssignments] = useState<any[]>([]);
   const [allPlaylists, setAllPlaylists] = useState<any[]>([]);
   const [form, setForm] = useState({ playlist_id: '', filler_playlist_id: '', priority: 0, active: true });
   const [saving, setSaving] = useState(false);
-  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [confirm, setConfirm] = useState<number | null>(null);
 
   const load = async () => {
     const [a, p] = await Promise.all([api.getAssignments(regionId), api.getPlaylists()]);
@@ -477,87 +642,99 @@ function AssignmentsTab({ regionId }: { regionId: number }) {
       });
       setForm({ playlist_id: '', filler_playlist_id: '', priority: 0, active: true });
       await load();
+      notify({ title: 'Додано', tone: 'success', icon: 'check' });
+    } catch (e: any) {
+      notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
     } finally { setSaving(false); }
   };
 
-  const del = (aid: number) => {
-    setConfirm({ message: 'Видалити призначення?', onConfirm: async () => {
-      setConfirm(null);
-      await api.deleteAssignment(regionId, aid); await load();
-    }});
+  const doDelete = async () => {
+    if (!confirm) return;
+    try {
+      await api.deleteAssignment(regionId, confirm);
+      await load();
+      notify({ title: 'Видалено', tone: 'success', icon: 'check' });
+    } catch (e: any) {
+      notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
+    } finally { setConfirm(null); }
   };
 
-  const playlists = allPlaylists;
-
   return (
-    <div className="p-4 sm:p-6">
-      {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
-      <div className="mb-5">
-        <h3 className="text-base font-semibold text-white">Призначення плейлистів</h3>
-        <p className="text-xs text-[#7a7a85] mt-1">
+    <div style={{ padding: 20 }}>
+      <div style={{ marginBottom: 14 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Призначення плейлистів</h3>
+        <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)', maxWidth: 620 }}>
           Запасний плейлист при тоновому сигналі, якщо жоден рядок розкладу не підходить за часом
         </p>
       </div>
 
-      {/* Add form */}
-      <div className="card p-4 mb-5">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
-          <div>
-            <label className="text-xs text-[#7a7a85] mb-1 block">Плейлист *</label>
-            <Select value={form.playlist_id} onChange={e => f('playlist_id', e.target.value)}>
-              <option value="">— оберіть —</option>
-              {playlists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs text-[#7a7a85] mb-1 block">Філер</label>
-            <Select value={form.filler_playlist_id} onChange={e => f('filler_playlist_id', e.target.value)}>
-              <option value="">— без філера —</option>
-              {playlists.filter(p => p.type === 'filler').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs text-[#7a7a85] mb-1 block">Пріоритет</label>
-            <input type="number" value={form.priority} onChange={e => f('priority', +e.target.value)} className="input" />
-          </div>
-          <div className="flex items-end">
-            <button onClick={add} disabled={saving || !form.playlist_id} className="btn-primary w-full text-sm">
-              {saving ? '...' : '+ Додати'}
-            </button>
-          </div>
+      <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.5fr 1fr auto', gap: 12, alignItems: 'end' }}>
+          <Field label="Плейлист" required>
+            <DropdownSelect
+              value={form.playlist_id}
+              onChange={v => f('playlist_id', v)}
+              options={[
+                { value: '', label: '— оберіть —' },
+                ...allPlaylists.map(p => ({ value: String(p.id), label: p.name })),
+              ]}
+            />
+          </Field>
+          <Field label="Філер">
+            <DropdownSelect
+              value={form.filler_playlist_id}
+              onChange={v => f('filler_playlist_id', v)}
+              options={[
+                { value: '', label: '— без філера —' },
+                ...allPlaylists.filter(p => p.type === 'filler').map(p => ({ value: String(p.id), label: p.name })),
+              ]}
+            />
+          </Field>
+          <Field label="Пріоритет">
+            <input
+              type="number" className="input"
+              value={form.priority}
+              onChange={e => f('priority', +e.target.value)}
+            />
+          </Field>
+          <Button variant="primary" icon="plus" onClick={add} disabled={saving || !form.playlist_id}>
+            {saving ? '…' : 'Додати'}
+          </Button>
         </div>
       </div>
 
       {assignments.length === 0 ? (
-        <div className="card p-8 text-center text-[#7a7a85] text-sm">Немає призначень</div>
+        <div className="card" style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
+          Немає призначень
+        </div>
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="table-wrap">
+          <table className="tbl">
             <thead>
-              <tr className="border-b border-[#383840]">
-                <th className="th">Плейлист</th>
-                <th className="th">Філер</th>
-                <th className="th">Пріоритет</th>
-                <th className="th w-20">Стан</th>
-                <th className="th w-16"></th>
+              <tr>
+                <th>Плейлист</th>
+                <th>Філер</th>
+                <th className="col-right">Пріоритет</th>
+                <th>Стан</th>
+                <th style={{ width: 60 }}></th>
               </tr>
             </thead>
             <tbody>
               {assignments.map((a: any) => {
-                const pl = playlists.find((p: any) => p.id === a.playlist_id);
-                const fl = playlists.find((p: any) => p.id === a.filler_playlist_id);
+                const pl = allPlaylists.find((p: any) => p.id === a.playlist_id);
+                const fl = allPlaylists.find((p: any) => p.id === a.filler_playlist_id);
                 return (
-                  <tr key={a.id} className="hover:bg-[#383840]/40 transition-colors">
-                    <td className="td text-white">{pl?.name ?? `#${a.playlist_id}`}</td>
-                    <td className="td text-[#7a7a85]">{fl?.name ?? '—'}</td>
-                    <td className="td text-[#7a7a85]">{a.priority}</td>
-                    <td className="td">
-                      <span className={`badge ${a.active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#383840] text-[#7a7a85]'}`}>
-                        {a.active ? 'Активне' : 'Вимкнено'}
-                      </span>
+                  <tr key={a.id}>
+                    <td style={{ fontWeight: 500 }}>{pl?.name ?? `#${a.playlist_id}`}</td>
+                    <td className="col-muted">{fl?.name ?? '—'}</td>
+                    <td className="col-right tabular">{a.priority}</td>
+                    <td>
+                      <Badge tone={a.active ? 'success' : 'neutral'} dot>
+                        {a.active ? 'активне' : 'вимкнено'}
+                      </Badge>
                     </td>
-                    <td className="td text-right">
-                      <button onClick={() => del(a.id)} className="text-red-400 hover:text-red-300 text-xs">Видалити</button>
+                    <td style={{ textAlign: 'right' }}>
+                      <Button variant="ghost" size="sm" icon="trash" onClick={() => setConfirm(a.id)} />
                     </td>
                   </tr>
                 );
@@ -566,14 +743,29 @@ function AssignmentsTab({ regionId }: { regionId: number }) {
           </table>
         </div>
       )}
+
+      <Modal
+        open={confirm !== null}
+        onClose={() => setConfirm(null)}
+        title="Видалити призначення?"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirm(null)}>Скасувати</Button>
+            <Button variant="danger" icon="trash" onClick={doDelete}>Видалити</Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
+          Дію неможливо скасувати.
+        </p>
+      </Modal>
     </div>
   );
 }
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
-const TABS = ['Плейлисти', 'Розклад', 'Призначення'] as const;
-type Tab = typeof TABS[number];
+type Tab = 'playlists' | 'schedules' | 'assignments';
 
 export default function RegionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -581,50 +773,55 @@ export default function RegionDetailPage() {
   const regionId = Number(id);
 
   const [region, setRegion] = useState<any>(null);
-  const [tab, setTab] = useState<Tab>('Плейлисти');
+  const [tab, setTab] = useState<Tab>('playlists');
 
   useEffect(() => {
     api.getRegion(regionId).then(setRegion).catch(() => navigate('/regions'));
   }, [regionId]);
 
-  if (!region) return <div className="p-8 text-[#7a7a85] text-sm">Завантаження...</div>;
+  if (!region) {
+    return (
+      <div style={{ padding: 40, color: 'var(--text-secondary)', fontSize: 13 }}>
+        Завантаження…
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 sm:px-6 py-4 border-b border-[#383840] flex-shrink-0">
-        <button onClick={() => navigate('/regions')}
-          className="text-[#7a7a85] hover:text-white transition-colors text-sm flex items-center gap-1.5">
-          ← Регіони
-        </button>
-        <span className="text-[#383840]">/</span>
-        <div className="flex-1 min-w-0">
-          <span className="text-white font-semibold">{region.name}</span>
-          <span className="ml-2 text-xs font-mono text-[#7a7a85]">{region.icecast_mount}</span>
-        </div>
-        <span className={`badge flex-shrink-0 ${region.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#383840] text-[#7a7a85]'}`}>
-          {region.enabled ? 'Активний' : 'Вимкнений'}
-        </span>
+    <div style={{ padding: '0 24px 40px' }}>
+      <PageHeader
+        title={region.name}
+        subtitle={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            <span className="mono" style={{ color: 'var(--text-muted)' }}>{region.icecast_mount}</span>
+            <Badge tone={region.enabled ? 'success' : 'neutral'} dot>
+              {region.enabled ? 'активний' : 'вимкнений'}
+            </Badge>
+          </span>
+        }
+        actions={
+          <Button variant="secondary" icon="chevronLeft" onClick={() => navigate('/regions')}>
+            До списку
+          </Button>
+        }
+      />
+
+      <div style={{ marginBottom: 14 }}>
+        <Tabs<Tab>
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: 'playlists',   label: 'Плейлисти' },
+            { value: 'schedules',   label: 'Розклад' },
+            { value: 'assignments', label: 'Призначення' },
+          ]}
+        />
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 px-4 sm:px-6 pt-3 border-b border-[#383840] flex-shrink-0">
-        {TABS.map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-px ` +
-              (tab === t
-                ? 'text-[#ff732e] border-[#ff732e]'
-                : 'text-[#7a7a85] border-transparent hover:text-[#9a9aa5]')}>
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      <div className="flex-1 overflow-hidden">
-        {tab === 'Плейлисти'  && <PlaylistsTab  regionId={regionId} />}
-        {tab === 'Розклад'    && <SchedulesTab   regionId={regionId} />}
-        {tab === 'Призначення' && <AssignmentsTab regionId={regionId} />}
+      <div className="card" style={{ padding: 0 }}>
+        {tab === 'playlists'   && <PlaylistsTab   regionId={regionId} />}
+        {tab === 'schedules'   && <SchedulesTab   regionId={regionId} />}
+        {tab === 'assignments' && <AssignmentsTab regionId={regionId} />}
       </div>
     </div>
   );

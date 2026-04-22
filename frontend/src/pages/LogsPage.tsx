@@ -1,28 +1,43 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useLogEntries } from '../hooks/useSocket';
+import {
+  Badge,
+  BadgeTone,
+  Button,
+  PageHeader,
+  Tabs,
+} from '../components/ui';
 
-const STATUS: Record<string, { label: string; cls: string }> = {
-  running:     { label: '▶ Грає',      cls: 'text-[#ff732e]' },
-  completed:   { label: '✓ Завершено', cls: 'text-emerald-400' },
-  interrupted: { label: '✕ Перервано', cls: 'text-red-400' },
+const STATUS_TONE: Record<string, BadgeTone> = {
+  running: 'accent',
+  completed: 'success',
+  interrupted: 'error',
 };
-const TRIGGER: Record<string, string> = { api: 'API', tone: 'Тон', schedule: 'Розклад' };
+const STATUS_LABEL: Record<string, string> = {
+  running: 'Грає',
+  completed: 'Завершено',
+  interrupted: 'Перервано',
+};
+const TRIGGER_LABEL: Record<string, string> = { api: 'API', tone: 'Тон', schedule: 'Розклад' };
 
-const LEVEL_CLS: Record<string, string> = {
-  error: 'text-red-400 bg-red-400/8 border-red-400/20',
-  warn:  'text-[#ff732e] bg-[#ff732e]/8 border-[#ff732e]/20',
-  info:  'text-[#7a7a85] bg-transparent border-transparent',
+const LEVEL_COLOR: Record<string, string> = {
+  error: 'var(--error)',
+  warn: 'var(--warn)',
+  info: 'var(--text-muted)',
 };
-const LEVEL_DOT: Record<string, string> = {
-  error: 'bg-red-400',
-  warn:  'bg-[#ff732e]',
-  info:  'bg-[#5a5a62]',
+const LEVEL_BG: Record<string, string> = {
+  error: 'var(--error-dim)',
+  warn: 'var(--warn-dim)',
+  info: 'transparent',
 };
 
 const fmt = (dt: string) => {
   if (!dt) return '—';
-  return new Date(dt).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return new Date(dt).toLocaleString('uk-UA', {
+    day: '2-digit', month: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
 };
 const dur = (start: string, end: string) => {
   if (!end) return '—';
@@ -30,11 +45,12 @@ const dur = (start: string, end: string) => {
   return s < 60 ? `${s}с` : `${Math.floor(s / 60)}хв ${s % 60}с`;
 };
 
+type Tab = 'ad' | 'system';
+
 export default function LogsPage() {
-  const [tab, setTab] = useState<'ad' | 'system'>('ad');
+  const [tab, setTab] = useState<Tab>('ad');
   const [adLogs, setAdLogs] = useState<any[]>([]);
   const [sysLogs, setSysLogs] = useState<any[]>([]);
-  const bottomRef = useRef<HTMLDivElement>(null);
 
   const reloadAd = () => api.getLogs(300).then(setAdLogs);
   const reloadSys = () => api.getSystemLogs(300).then(setSysLogs);
@@ -42,136 +58,125 @@ export default function LogsPage() {
   useEffect(() => {
     reloadAd();
     reloadSys();
-    const t = setInterval(reloadAd, 10000);
-    return () => clearInterval(t);
+    const tAd = setInterval(reloadAd, 10000);
+    const tSys = setInterval(reloadSys, 15000);
+    return () => { clearInterval(tAd); clearInterval(tSys); };
   }, []);
 
-  useLogEntries((entry) => {
+  useLogEntries((entry: any) => {
     setSysLogs(prev => [entry, ...prev].slice(0, 500));
   });
 
-  const reload = () => { reloadAd(); reloadSys(); };
+  const hasErrors = sysLogs.some(l => l.level === 'error');
 
   return (
-    <div className="p-4 sm:p-6">
-      <div className="page-header">
-        <h1 className="page-title">Логи</h1>
-        <button onClick={reload} className="btn-ghost text-xs py-2">↻ Оновити</button>
+    <div style={{ padding: '0 24px 40px' }}>
+      <PageHeader
+        title="Логи"
+        subtitle="Журнал врізок реклами та події системи"
+        actions={
+          <Button variant="secondary" icon="restart" onClick={() => { reloadAd(); reloadSys(); }}>
+            Оновити
+          </Button>
+        }
+      />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <Tabs<Tab>
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: 'ad',     label: 'Врізки',  count: adLogs.length },
+            { value: 'system', label: 'Система', count: sysLogs.length },
+          ]}
+        />
+        {hasErrors && tab !== 'system' && <Badge tone="error" dot>є помилки</Badge>}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-4 bg-[#1c1c1f] border border-[#383840] rounded-lg p-1 w-fit">
-        <button
-          onClick={() => setTab('ad')}
-          className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${tab === 'ad' ? 'bg-[#383840] text-white' : 'text-[#7a7a85] hover:text-[#9a9aa5]'}`}
-        >
-          Врізки
-        </button>
-        <button
-          onClick={() => setTab('system')}
-          className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 ${tab === 'system' ? 'bg-[#383840] text-white' : 'text-[#7a7a85] hover:text-[#9a9aa5]'}`}
-        >
-          Система
-          {sysLogs.some(l => l.level === 'error') && (
-            <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-          )}
-        </button>
-      </div>
-
-      {/* Ad Logs Tab */}
       {tab === 'ad' && (
-        <>
-          {/* Mobile cards */}
-          <div className="sm:hidden space-y-3">
-            {adLogs.map(l => {
-              const st = STATUS[l.status] || { label: l.status, cls: 'text-[#7a7a85]' };
-              return (
-                <div key={l.id} className="card p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="font-semibold text-white text-sm">{l.region_name || `#${l.region_id}`}</div>
-                      <div className="text-xs text-[#7a7a85] mt-0.5">{l.playlist_name || '—'}</div>
-                    </div>
-                    <span className={`text-xs font-bold ${st.cls}`}>{st.label}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs text-[#7a7a85]">
-                    <div>Тригер: <span className="text-[#9a9aa5]">{TRIGGER[l.trigger_type] || l.trigger_type}</span></div>
-                    <div>Тривалість: <span className="text-[#9a9aa5]">{dur(l.start_time, l.end_time)}</span></div>
-                    <div className="col-span-2">Початок: <span className="text-[#9a9aa5] font-mono">{fmt(l.start_time)}</span></div>
-                  </div>
-                </div>
-              );
-            })}
-            {!adLogs.length && (
-              <div className="card p-10 text-center text-[#7a7a85] text-sm">Немає записів</div>
-            )}
+        adLogs.length === 0 ? (
+          <div className="card" style={{ padding: '60px 24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
+            Немає записів
           </div>
-
-          {/* Desktop table */}
-          <div className="hidden sm:block card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[#383840]">
-                    <th className="th">Регіон</th>
-                    <th className="th">Плейлист</th>
-                    <th className="th">Тригер</th>
-                    <th className="th">Початок</th>
-                    <th className="th">Кінець</th>
-                    <th className="th">Тривалість</th>
-                    <th className="th">Статус</th>
+        ) : (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Регіон</th>
+                  <th>Плейлист</th>
+                  <th>Тригер</th>
+                  <th>Початок</th>
+                  <th>Кінець</th>
+                  <th className="col-right">Тривалість</th>
+                  <th>Статус</th>
+                </tr>
+              </thead>
+              <tbody>
+                {adLogs.map(l => (
+                  <tr key={l.id}>
+                    <td style={{ fontWeight: 500 }}>{l.region_name || `#${l.region_id}`}</td>
+                    <td className="col-muted" style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {l.playlist_name || '—'}
+                    </td>
+                    <td><Badge tone="neutral">{TRIGGER_LABEL[l.trigger_type] || l.trigger_type}</Badge></td>
+                    <td className="mono col-muted" style={{ fontSize: 11 }}>{fmt(l.start_time)}</td>
+                    <td className="mono col-muted" style={{ fontSize: 11 }}>{fmt(l.end_time)}</td>
+                    <td className="col-right col-muted" style={{ fontSize: 12 }}>{dur(l.start_time, l.end_time)}</td>
+                    <td>
+                      <Badge tone={STATUS_TONE[l.status] || 'neutral'} dot>
+                        {STATUS_LABEL[l.status] || l.status}
+                      </Badge>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {adLogs.map(l => {
-                    const st = STATUS[l.status] || { label: l.status, cls: 'text-[#7a7a85]' };
-                    return (
-                      <tr key={l.id} className="hover:bg-[#383840]/40 transition-colors">
-                        <td className="td font-semibold text-white">{l.region_name || `#${l.region_id}`}</td>
-                        <td className="td text-[#7a7a85] max-w-[150px] truncate">{l.playlist_name || '—'}</td>
-                        <td className="td">
-                          <span className="badge bg-[#383840] text-[#9a9aa5]">{TRIGGER[l.trigger_type] || l.trigger_type}</span>
-                        </td>
-                        <td className="td font-mono text-xs text-[#7a7a85]">{fmt(l.start_time)}</td>
-                        <td className="td font-mono text-xs text-[#7a7a85]">{fmt(l.end_time)}</td>
-                        <td className="td text-[#7a7a85] text-xs">{dur(l.start_time, l.end_time)}</td>
-                        <td className={`td text-xs font-bold ${st.cls}`}>{st.label}</td>
-                      </tr>
-                    );
-                  })}
-                  {!adLogs.length && (
-                    <tr><td colSpan={7} className="td text-center py-10 text-[#7a7a85]">Немає записів</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </>
+        )
       )}
 
-      {/* System Logs Tab */}
       {tab === 'system' && (
-        <div className="space-y-1">
-          {sysLogs.map((l, i) => {
-            const lvl = l.level as string;
-            const dotCls = LEVEL_DOT[lvl] || 'bg-[#5a5a62]';
-            const rowCls = LEVEL_CLS[lvl] || 'text-[#7a7a85] bg-transparent border-transparent';
-            return (
-              <div key={l.id ?? i} className={`flex items-start gap-3 px-3 py-2 rounded-lg border text-xs font-mono ${rowCls}`}>
-                <div className={`w-2 h-2 rounded-full mt-0.5 flex-shrink-0 ${dotCls}`} />
-                <span className="text-[#5a5a62] flex-shrink-0 tabular-nums">{fmt(l.ts)}</span>
-                {l.region_name && (
-                  <span className="text-[#7a7a85] flex-shrink-0">[{l.region_name}]</span>
-                )}
-                <span className="break-all">{l.message}</span>
-              </div>
-            );
-          })}
-          {!sysLogs.length && (
-            <div className="card p-10 text-center text-[#7a7a85] text-sm">Немає записів</div>
-          )}
-          <div ref={bottomRef} />
-        </div>
+        sysLogs.length === 0 ? (
+          <div className="card" style={{ padding: '60px 24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
+            Немає записів
+          </div>
+        ) : (
+          <div className="card" style={{ padding: 6 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: '70vh', overflow: 'auto' }}>
+              {sysLogs.map((l, i) => {
+                const lvl = (l.level as string) || 'info';
+                return (
+                  <div
+                    key={l.id ?? i}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 10,
+                      padding: '6px 10px', borderRadius: 6,
+                      background: LEVEL_BG[lvl] || 'transparent',
+                      fontFamily: 'var(--font-mono)', fontSize: 12,
+                      border: lvl === 'info' ? '1px solid transparent' : '1px solid rgba(255,255,255,0.04)',
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 6, height: 6, borderRadius: 999, marginTop: 6,
+                        background: LEVEL_COLOR[lvl] || 'var(--text-muted)',
+                        flex: 'none',
+                      }}
+                    />
+                    <span className="tabular" style={{ color: 'var(--text-muted)', flex: 'none' }}>{fmt(l.ts)}</span>
+                    {l.region_name && (
+                      <span style={{ color: 'var(--text-secondary)', flex: 'none' }}>[{l.region_name}]</span>
+                    )}
+                    <span style={{ color: LEVEL_COLOR[lvl] || 'var(--text)', wordBreak: 'break-all', flex: 1 }}>
+                      {l.message}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )
       )}
     </div>
   );

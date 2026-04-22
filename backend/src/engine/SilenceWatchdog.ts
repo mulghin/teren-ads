@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import { getSetting } from '../db';
 import { logEvent } from '../logger';
 import { fireWebhook } from './WebhookService';
+import { sendTelegramNotification } from './TelegramNotifier';
 
 /**
  * Monitors the source stream for silence.
@@ -83,14 +84,16 @@ export class SilenceWatchdog extends EventEmitter {
         const msg = `🔇 Тиша в ефірі вже ${Math.round(elapsed)}с! Перевірте джерело: ${this.sourceUrl}`;
         logEvent('error', msg);
         this.emit('silence', { sourceUrl: this.sourceUrl, durationSec: elapsed });
-        fireWebhook({
-          event: 'silence_alert',
+        const silencePayload = {
+          event: 'silence_alert' as const,
           region_id: 0,
           region_name: 'system',
           reason: `Source silent for ${Math.round(elapsed)}s`,
           url: this.sourceUrl,
           ts: new Date().toISOString(),
-        });
+        };
+        fireWebhook(silencePayload);
+        sendTelegramNotification(silencePayload);
       }
     }, this.durationSec * 1000 + 500);
   }

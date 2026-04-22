@@ -50,6 +50,7 @@ export const api = {
   // Settings
   getSettings: () => req<Record<string, string>>('GET', '/settings'),
   saveSettings: (data: any) => req<any>('PUT', '/settings', data),
+  testTelegram: () => req<{ ok: boolean; error?: string }>('POST', '/settings/telegram/test'),
 
   // Schedules
   getSchedules: () => req<any[]>('GET', '/schedules'),
@@ -81,7 +82,6 @@ export const api = {
     return req<any[]>('GET', `/reports/plays?${p}`);
   },
   getMediaPlan: () => req<any[]>('GET', '/reports/mediaplan'),
-  getMediaPlanXlsx: () => `${BASE}/reports/mediaplan/xlsx`,
   downloadMediaPlanXlsx: async () => {
     const res = await fetch(`${BASE}/reports/mediaplan/xlsx`, { headers: authHeaders() });
     if (!res.ok) throw new Error(await res.text());

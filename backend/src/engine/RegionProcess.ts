@@ -5,7 +5,9 @@ import { getIO } from '../socket';
 import { logEvent } from '../logger';
 import { IcecastSource, FeedFileOptions } from './IcecastSource';
 import { setIcyMetadata } from './IcyMetadata';
+import { nowPlayingMirror } from './NowPlayingMirror';
 import { fireWebhook } from './WebhookService';
+import { sendTelegramNotification } from './TelegramNotifier';
 
 export type RegionMode = 'stopped' | 'main' | 'ad' | 'filler';
 
@@ -170,14 +172,16 @@ export class RegionProcess {
       // Use on() so every backup switch is logged (once() fires only once)
       src.on('source_switch', ({ from, to }: { from: string; to: string }) => {
         logEvent('warn', `Перемкнулось на резервне джерело: ${to}`, this.state.id, this.state.name);
-        fireWebhook({
-          event: 'source_switch',
+        const payload = {
+          event: 'source_switch' as const,
           region_id: this.state.id,
           region_name: this.state.name,
           reason: `Primary ${from} unavailable`,
           url: to,
           ts: new Date().toISOString(),
-        });
+        };
+        fireWebhook(payload);
+        sendTelegramNotification(payload);
       });
 
       console.log(`[IcecastSource:${mount}] connected`);
@@ -208,6 +212,7 @@ export class RegionProcess {
     logEvent('info', '→ ЕФІР (main)', this.state.id, this.state.name);
     const mount = this.state.mount.startsWith('/') ? this.state.mount : '/' + this.state.mount;
     setIcyMetadata(mount, '');
+    nowPlayingMirror.invalidate(mount); // force re-push of master title on next tick
   }
 
   async startAd(playlistId: number, triggerType = 'api', fillerPlaylistId?: number) {
@@ -258,14 +263,16 @@ export class RegionProcess {
         }, maxSec * 1000);
       }
 
-      fireWebhook({
-        event: 'ad_start',
+      const adStartPayload = {
+        event: 'ad_start' as const,
         region_id: this.state.id,
         region_name: this.state.name,
         playlist_id: playlistId,
         trigger_type: triggerType,
         ts: new Date().toISOString(),
-      });
+      };
+      fireWebhook(adStartPayload);
+      sendTelegramNotification(adStartPayload);
 
       await this._playFiles(files, fillerPlaylistId, playlistId);
 
@@ -364,14 +371,16 @@ export class RegionProcess {
         this.state.adLogId = null;
       }
 
-      fireWebhook({
-        event: 'ad_end',
+      const adEndPayload = {
+        event: 'ad_end' as const,
         region_id: this.state.id,
         region_name: this.state.name,
         playlist_id: adPlaylistId,
         reason: 'completed',
         ts: new Date().toISOString(),
-      });
+      };
+      fireWebhook(adEndPayload);
+      sendTelegramNotification(adEndPayload);
 
       if (this.state.mode === 'filler') {
         if (!this.adActive) return;
@@ -399,13 +408,15 @@ export class RegionProcess {
     }
 
     if (reason !== 'playlist_end' && reason !== 'completed') {
-      fireWebhook({
-        event: 'ad_end',
+      const returnPayload = {
+        event: 'ad_end' as const,
         region_id: this.state.id,
         region_name: this.state.name,
         reason,
         ts: new Date().toISOString(),
-      });
+      };
+      fireWebhook(returnPayload);
+      sendTelegramNotification(returnPayload);
     }
 
     this.state.mode = 'main';
@@ -417,6 +428,7 @@ export class RegionProcess {
 
     const mount = this.state.mount.startsWith('/') ? this.state.mount : '/' + this.state.mount;
     setIcyMetadata(mount, '');
+    nowPlayingMirror.invalidate(mount);
   }
 
   async stop() {

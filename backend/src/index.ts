@@ -9,6 +9,7 @@ import { regionManager } from './engine/RegionManager';
 import { toneDetector } from './engine/ToneDetector';
 import { scheduler } from './engine/Scheduler';
 import { silenceWatchdog } from './engine/SilenceWatchdog';
+import { nowPlayingMirror } from './engine/NowPlayingMirror';
 import regionsRouter from './routes/regions';
 import playlistsRouter from './routes/playlists';
 import settingsRouter from './routes/settings';
@@ -26,10 +27,14 @@ async function main() {
   const app = express();
   const server = http.createServer(app);
 
-  app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
+  const corsOrigin = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  app.use(cors({ origin: corsOrigin }));
   app.use(express.json());
 
-  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+  app.use('/uploads', apiAuth, express.static(path.join(process.cwd(), 'uploads')));
 
   app.use('/api/regions', apiAuth, regionsRouter);
   app.use('/api/regions/:id/time-schedules', apiAuth, regionSchedulesRouter);
@@ -72,6 +77,7 @@ async function main() {
         listeners: listenerMap[r.mount] ?? 0,
       })),
       icecastSources,
+      masterTitle: nowPlayingMirror.getMasterTitle(),
     });
   });
 
@@ -82,9 +88,16 @@ async function main() {
 
   initSocket(server);
 
+  let eaddrRetries = 0;
+  const EADDR_MAX = 5;
   server.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`[server] Port ${PORT} in use — retrying in 3s`);
+      eaddrRetries += 1;
+      if (eaddrRetries > EADDR_MAX) {
+        console.error(`[server] Port ${PORT} still in use after ${EADDR_MAX} retries — exiting`);
+        process.exit(1);
+      }
+      console.error(`[server] Port ${PORT} in use — retrying in 3s (${eaddrRetries}/${EADDR_MAX})`);
       setTimeout(() => server.listen(PORT), 3000);
     } else {
       console.error('[server] Fatal listen error:', err);
@@ -100,6 +113,7 @@ async function main() {
   await scheduler.init();
   await toneDetector.start();
   await silenceWatchdog.start();
+  await nowPlayingMirror.start();
 }
 
 process.on('uncaughtException', (err) => {
@@ -113,6 +127,7 @@ process.on('unhandledRejection', (reason) => {
 async function shutdown(signal: string) {
   console.log(`[PROCESS] Received ${signal} — shutting down gracefully`);
   try {
+    nowPlayingMirror.stop();
     toneDetector.stop();
     silenceWatchdog.stop();
     scheduler.stop();

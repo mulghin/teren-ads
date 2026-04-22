@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import {
+  Badge,
+  BadgeTone,
+  Button,
+  PageHeader,
+  Tabs,
+  useToast,
+} from '../components/ui';
 
 const fmtDate = (iso: string) => iso ? new Date(iso).toLocaleString('uk-UA') : '—';
 const fmtDur = (sec: number) => {
@@ -12,7 +20,19 @@ const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString()
 
 type Tab = 'campaigns' | 'regions' | 'plays';
 
+const TRIGGER_TONE: Record<string, BadgeTone> = {
+  tone: 'info',
+  api: 'accent',
+  schedule: 'success',
+};
+
+const STATUS_TONE: Record<string, BadgeTone> = {
+  completed: 'success',
+  interrupted: 'error',
+};
+
 export default function ReportsPage() {
+  const notify = useToast();
   const [tab, setTab] = useState<Tab>('campaigns');
   const [from, setFrom] = useState(daysAgo(30));
   const [to, setTo] = useState(today());
@@ -20,194 +40,188 @@ export default function ReportsPage() {
   const [regionStats, setRegionStats] = useState<any>(null);
   const [plays, setPlays] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
-  const showError = (msg: string) => { setError(msg); setTimeout(() => setError(null), 4000); };
-
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      if (tab === 'campaigns') setCampaigns(await api.getCampaignReport(from, to));
-      else if (tab === 'regions') setRegionStats(await api.getRegionStats(from, to));
-      else setPlays(await api.getPlayLog({ from, to }));
-    } catch (e: any) { showError(e.message); }
-    finally { setLoading(false); }
-  };
-
-  useEffect(() => { load(); }, [tab, from, to]);
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        if (tab === 'campaigns')      setCampaigns(await api.getCampaignReport(from, to));
+        else if (tab === 'regions')   setRegionStats(await api.getRegionStats(from, to));
+        else                          setPlays(await api.getPlayLog({ from, to }));
+      } catch (e: any) {
+        notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [tab, from, to]);
 
   const downloadXlsx = async () => {
+    if (downloading) return;
+    setDownloading(true);
     try { await api.downloadMediaPlanXlsx(); }
-    catch (e: any) { showError(e.message); }
+    catch (e: any) { notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' }); }
+    finally { setDownloading(false); }
   };
 
   return (
-    <div className="p-4 sm:p-6">
-      {error && (
-        <div className="fixed top-4 right-4 z-50 bg-red-500/15 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-xl shadow-lg max-w-sm">
-          {error}
-        </div>
-      )}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <h1 className="page-title">Звіти</h1>
-        <button onClick={downloadXlsx} className="btn-primary text-sm py-2 px-4">
-          ↓ Медіаплан Excel
-        </button>
+    <div style={{ padding: '0 24px 40px' }}>
+      <PageHeader
+        title="Звіти"
+        subtitle="Аналітика кампаній, регіонів та журнал виходів"
+        actions={
+          <Button variant="primary" icon="download" onClick={downloadXlsx} disabled={downloading}>
+            {downloading ? 'Формування…' : 'Медіаплан · XLSX'}
+          </Button>
+        }
+      />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
+        <Tabs<Tab>
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: 'campaigns', label: 'Кампанії' },
+            { value: 'regions',   label: 'Регіони' },
+            { value: 'plays',     label: 'Виходи' },
+          ]}
+        />
+        <div style={{ flex: 1 }} />
+        <Field label="Від">
+          <input type="date" className="input" value={from} onChange={e => setFrom(e.target.value)} style={{ width: 150 }} />
+        </Field>
+        <Field label="До">
+          <input type="date" className="input" value={to} onChange={e => setTo(e.target.value)} style={{ width: 150 }} />
+        </Field>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-4 p-1 bg-[#121214] rounded-xl w-fit">
-        {(['campaigns', 'regions', 'plays'] as Tab[]).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-1.5 rounded-lg text-sm transition-colors ${tab === t ? 'bg-[#383840] text-white' : 'text-[#7a7a85] hover:text-white'}`}>
-            {t === 'campaigns' ? 'Кампанії' : t === 'regions' ? 'Регіони' : 'Виходи'}
-          </button>
-        ))}
-      </div>
-
-      {/* Date range */}
-      <div className="flex gap-3 mb-4 flex-wrap">
-        <div>
-          <label className="text-xs text-[#7a7a85] block mb-1">Від</label>
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="input text-sm py-1.5" />
-        </div>
-        <div>
-          <label className="text-xs text-[#7a7a85] block mb-1">До</label>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} className="input text-sm py-1.5" />
-        </div>
-      </div>
-
-      {loading && <div className="text-[#7a7a85] text-sm">Завантаження...</div>}
-
-      {/* Campaigns tab */}
-      {tab === 'campaigns' && campaigns && (
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[#383840] text-[#7a7a85] text-xs uppercase tracking-wider">
-                  <th className="text-left px-4 py-3">Плейлист</th>
-                  <th className="text-center px-3 py-3">Виходи</th>
-                  <th className="text-center px-3 py-3">Завершено</th>
-                  <th className="text-center px-3 py-3">Перервано</th>
-                  <th className="text-center px-3 py-3">Ефірний час</th>
-                  <th className="text-center px-3 py-3">Перший вихід</th>
-                  <th className="text-center px-3 py-3">Останній вихід</th>
-                  <th className="text-center px-3 py-3">Ліміт/день</th>
-                  <th className="text-center px-3 py-3">Кампанія</th>
-                </tr>
-              </thead>
-              <tbody>
-                {campaigns.campaigns.map((c: any) => (
-                  <tr key={c.playlist_id} className="border-b border-[#1e1e22] hover:bg-[#1e1e22] transition-colors">
-                    <td className="px-4 py-3 font-medium text-white">{c.playlist_name}</td>
-                    <td className="px-3 py-3 text-center">
-                      <span className="text-[#ff732e] font-semibold">{c.total_plays || 0}</span>
-                    </td>
-                    <td className="px-3 py-3 text-center text-green-400">{c.completed || 0}</td>
-                    <td className="px-3 py-3 text-center text-red-400">{c.interrupted || 0}</td>
-                    <td className="px-3 py-3 text-center text-[#9a9aa5]">{fmtDur(c.total_duration_sec)}</td>
-                    <td className="px-3 py-3 text-center text-[#7a7a85] text-xs">{fmtDate(c.first_play)}</td>
-                    <td className="px-3 py-3 text-center text-[#7a7a85] text-xs">{fmtDate(c.last_play)}</td>
-                    <td className="px-3 py-3 text-center text-[#7a7a85]">
-                      {c.max_plays_per_day > 0 ? c.max_plays_per_day : '∞'}
-                    </td>
-                    <td className="px-3 py-3 text-center text-xs text-[#7a7a85]">
-                      {c.start_date ? `${c.start_date} → ${c.end_date || '∞'}` : '∞'}
-                    </td>
-                  </tr>
-                ))}
-                {campaigns.campaigns.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-[#48484f]">Немає даних за вибраний період</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+      {loading && (
+        <div className="card" style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
+          Завантаження…
         </div>
       )}
 
-      {/* Regions tab */}
-      {tab === 'regions' && regionStats && (
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[#383840] text-[#7a7a85] text-xs uppercase tracking-wider">
-                  <th className="text-left px-4 py-3">Регіон</th>
-                  <th className="text-center px-3 py-3">Дата</th>
-                  <th className="text-center px-3 py-3">Виходи</th>
-                  <th className="text-center px-3 py-3">Ефірний час</th>
-                  <th className="text-center px-3 py-3">Тон</th>
-                  <th className="text-center px-3 py-3">API</th>
-                  <th className="text-center px-3 py-3">Планувальник</th>
+      {!loading && tab === 'campaigns' && campaigns && (
+        <div className="table-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Плейлист</th>
+                <th className="col-right">Виходи</th>
+                <th className="col-right">Завершено</th>
+                <th className="col-right">Перервано</th>
+                <th className="col-right">Ефірний час</th>
+                <th>Перший вихід</th>
+                <th>Останній вихід</th>
+                <th className="col-right">Ліміт/день</th>
+                <th>Кампанія</th>
+              </tr>
+            </thead>
+            <tbody>
+              {campaigns.campaigns.map((c: any) => (
+                <tr key={c.playlist_id}>
+                  <td style={{ fontWeight: 500 }}>{c.playlist_name}</td>
+                  <td className="col-right tabular" style={{ color: 'var(--accent)', fontWeight: 600 }}>{c.total_plays || 0}</td>
+                  <td className="col-right tabular" style={{ color: 'var(--success)' }}>{c.completed || 0}</td>
+                  <td className="col-right tabular" style={{ color: 'var(--error)' }}>{c.interrupted || 0}</td>
+                  <td className="col-right col-muted tabular">{fmtDur(c.total_duration_sec)}</td>
+                  <td className="mono col-muted" style={{ fontSize: 11 }}>{fmtDate(c.first_play)}</td>
+                  <td className="mono col-muted" style={{ fontSize: 11 }}>{fmtDate(c.last_play)}</td>
+                  <td className="col-right col-muted">{c.max_plays_per_day > 0 ? c.max_plays_per_day : '∞'}</td>
+                  <td className="col-muted" style={{ fontSize: 11 }}>
+                    {c.start_date ? `${c.start_date} → ${c.end_date || '∞'}` : '∞'}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {regionStats.rows.filter((r: any) => r.date).map((r: any, i: number) => (
-                  <tr key={i} className="border-b border-[#1e1e22] hover:bg-[#1e1e22] transition-colors">
-                    <td className="px-4 py-3 font-medium text-white">{r.region_name}</td>
-                    <td className="px-3 py-3 text-center text-[#9a9aa5]">{r.date?.slice(0, 10)}</td>
-                    <td className="px-3 py-3 text-center text-[#ff732e] font-semibold">{r.plays}</td>
-                    <td className="px-3 py-3 text-center text-[#9a9aa5]">{fmtDur(r.total_sec)}</td>
-                    <td className="px-3 py-3 text-center text-blue-400">{r.tone_plays}</td>
-                    <td className="px-3 py-3 text-center text-purple-400">{r.api_plays}</td>
-                    <td className="px-3 py-3 text-center text-green-400">{r.schedule_plays}</td>
-                  </tr>
-                ))}
-                {regionStats.rows.filter((r: any) => r.date).length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-[#48484f]">Немає даних за вибраний період</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              ))}
+              {campaigns.campaigns.length === 0 && (
+                <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Немає даних за вибраний період</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* Plays tab */}
-      {tab === 'plays' && (
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[#383840] text-[#7a7a85] text-xs uppercase tracking-wider">
-                  <th className="text-left px-4 py-3">Час</th>
-                  <th className="text-left px-3 py-3">Регіон</th>
-                  <th className="text-left px-3 py-3">Плейлист</th>
-                  <th className="text-center px-3 py-3">Тригер</th>
-                  <th className="text-center px-3 py-3">Тривалість</th>
-                  <th className="text-center px-3 py-3">Статус</th>
+      {!loading && tab === 'regions' && regionStats && (
+        <div className="table-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Регіон</th>
+                <th>Дата</th>
+                <th className="col-right">Виходи</th>
+                <th className="col-right">Ефірний час</th>
+                <th className="col-right">Тон</th>
+                <th className="col-right">API</th>
+                <th className="col-right">Планувальник</th>
+              </tr>
+            </thead>
+            <tbody>
+              {regionStats.rows.filter((r: any) => r.date).map((r: any, i: number) => (
+                <tr key={i}>
+                  <td style={{ fontWeight: 500 }}>{r.region_name}</td>
+                  <td className="mono col-muted" style={{ fontSize: 12 }}>{r.date?.slice(0, 10)}</td>
+                  <td className="col-right tabular" style={{ color: 'var(--accent)', fontWeight: 600 }}>{r.plays}</td>
+                  <td className="col-right col-muted tabular">{fmtDur(r.total_sec)}</td>
+                  <td className="col-right tabular" style={{ color: 'var(--info)' }}>{r.tone_plays}</td>
+                  <td className="col-right tabular" style={{ color: 'var(--accent)' }}>{r.api_plays}</td>
+                  <td className="col-right tabular" style={{ color: 'var(--success)' }}>{r.schedule_plays}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {plays.map((p: any) => (
-                  <tr key={p.id} className="border-b border-[#1e1e22] hover:bg-[#1e1e22] transition-colors">
-                    <td className="px-4 py-3 text-xs text-[#9a9aa5]">{fmtDate(p.start_time)}</td>
-                    <td className="px-3 py-3 text-white">{p.region_name}</td>
-                    <td className="px-3 py-3 text-[#9a9aa5]">{p.playlist_name}</td>
-                    <td className="px-3 py-3 text-center">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        p.trigger_type === 'tone' ? 'bg-blue-500/15 text-blue-400' :
-                        p.trigger_type === 'api' ? 'bg-purple-500/15 text-purple-400' :
-                        'bg-green-500/15 text-green-400'
-                      }`}>{p.trigger_type}</span>
-                    </td>
-                    <td className="px-3 py-3 text-center text-[#9a9aa5]">{fmtDur(p.duration_sec)}</td>
-                    <td className="px-3 py-3 text-center">
-                      <span className={`text-xs ${p.status === 'completed' ? 'text-green-400' : p.status === 'interrupted' ? 'text-red-400' : 'text-yellow-400'}`}>
-                        {p.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {plays.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-[#48484f]">Немає виходів за вибраний період</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              ))}
+              {regionStats.rows.filter((r: any) => r.date).length === 0 && (
+                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Немає даних за вибраний період</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && tab === 'plays' && (
+        <div className="table-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Час</th>
+                <th>Регіон</th>
+                <th>Плейлист</th>
+                <th>Тригер</th>
+                <th className="col-right">Тривалість</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plays.map(p => (
+                <tr key={p.id}>
+                  <td className="mono col-muted" style={{ fontSize: 11 }}>{fmtDate(p.start_time)}</td>
+                  <td style={{ fontWeight: 500 }}>{p.region_name}</td>
+                  <td className="col-muted">{p.playlist_name}</td>
+                  <td>
+                    <Badge tone={TRIGGER_TONE[p.trigger_type] || 'neutral'}>{p.trigger_type}</Badge>
+                  </td>
+                  <td className="col-right col-muted tabular">{fmtDur(p.duration_sec)}</td>
+                  <td>
+                    <Badge tone={STATUS_TONE[p.status] || 'warn'} dot>{p.status}</Badge>
+                  </td>
+                </tr>
+              ))}
+              {plays.length === 0 && (
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Немає виходів за вибраний період</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+        {label}
+      </span>
+      {children}
+    </label>
   );
 }

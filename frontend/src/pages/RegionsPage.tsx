@@ -1,227 +1,292 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import { Select } from '../components/Select';
+import {
+  Badge,
+  Button,
+  DropdownSelect,
+  Field,
+  Icon,
+  Modal,
+  PageHeader,
+  Toggle,
+  useToast,
+} from '../components/ui';
 
 const RETURN_MODES = [
-  { value: 'signal', label: 'Чекати сигнал (API / тон)' },
+  { value: 'signal',       label: 'Чекати сигнал (API / тон)' },
   { value: 'playlist_end', label: 'Автоповернення після плейлиста' },
-  { value: 'timer', label: 'За таймером' },
+  { value: 'timer',        label: 'За таймером' },
 ];
+
+type Region = {
+  id: number;
+  name: string;
+  slug: string;
+  icecast_mount: string;
+  crossfade_sec: number;
+  return_mode: string;
+  return_timer_sec: number;
+  enabled: boolean;
+};
 
 const empty = {
   name: '', slug: '', icecast_mount: '',
   crossfade_sec: 3, return_mode: 'signal', return_timer_sec: 0, enabled: true,
 };
 
-function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="bg-[#212126] border border-[#383840] rounded-2xl p-6 w-80 shadow-2xl">
-        <p className="text-white text-sm mb-6 leading-relaxed">{message}</p>
-        <div className="flex gap-3 justify-end">
-          <button onClick={onCancel} className="px-4 py-2 rounded-xl text-xs text-[#9a9aa5] hover:text-white hover:bg-[#383840] transition-colors">Скасувати</button>
-          <button onClick={onConfirm} className="px-4 py-2 rounded-xl text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300 transition-colors">Видалити</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function RegionsPage() {
   const navigate = useNavigate();
-  const [regions, setRegions] = useState<any[]>([]);
+  const notify = useToast();
+  const [regions, setRegions] = useState<Region[]>([]);
   const [modal, setModal] = useState<null | 'create' | number>(null);
   const [form, setForm] = useState({ ...empty });
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [confirm, setConfirm] = useState<null | { id: number; name: string }>(null);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
 
   const load = async () => setRegions(await api.getRegions());
   useEffect(() => { load(); }, []);
 
+  const filtered = useMemo(() => {
+    let list = regions;
+    if (filter === 'enabled') list = list.filter(r => r.enabled);
+    if (filter === 'disabled') list = list.filter(r => !r.enabled);
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(r =>
+        r.name.toLowerCase().includes(q) ||
+        r.slug.toLowerCase().includes(q) ||
+        r.icecast_mount.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [regions, filter, search]);
+
   const openCreate = () => { setForm({ ...empty }); setModal('create'); };
-  const openEdit = (r: any) => {
-    setForm({ name: r.name, slug: r.slug, icecast_mount: r.icecast_mount,
+  const openEdit = (r: Region) => {
+    setForm({
+      name: r.name, slug: r.slug, icecast_mount: r.icecast_mount,
       crossfade_sec: r.crossfade_sec, return_mode: r.return_mode,
-      return_timer_sec: r.return_timer_sec, enabled: r.enabled });
+      return_timer_sec: r.return_timer_sec, enabled: r.enabled,
+    });
     setModal(r.id);
   };
 
   const save = async () => {
     setSaving(true);
-    setError(null);
     try {
       if (modal === 'create') await api.createRegion(form);
       else await api.updateRegion(modal as number, form);
       setModal(null); await load();
+      notify({ title: 'Збережено', tone: 'success', icon: 'check' });
     } catch (e: any) {
-      setError(e.message);
-      setTimeout(() => setError(null), 4000);
+      notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
     } finally { setSaving(false); }
   };
 
-  const del = (id: number) => {
-    setConfirm({
-      message: 'Видалити регіон? Це також видалить всі пов\'язані розклади та призначення.',
-      onConfirm: async () => {
-        setConfirm(null);
-        try { await api.deleteRegion(id); await load(); }
-        catch (e: any) { setError(e.message); setTimeout(() => setError(null), 4000); }
-      },
-    });
+  const doDelete = async () => {
+    if (!confirm) return;
+    try {
+      await api.deleteRegion(confirm.id);
+      notify({ title: 'Регіон видалено', tone: 'success', icon: 'check' });
+      await load();
+    } catch (e: any) {
+      notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
+    } finally { setConfirm(null); }
   };
 
   const f = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
   const valid = form.name && form.slug && form.icecast_mount;
 
+  const enabledCount = regions.filter(r => r.enabled).length;
+
   return (
-    <div className="p-4 sm:p-6">
-      {error && (
-        <div className="fixed top-4 right-4 z-50 bg-red-500/15 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-xl shadow-lg max-w-sm">
-          {error}
+    <div style={{ padding: '0 24px 40px' }}>
+      <PageHeader
+        title="Регіони"
+        subtitle={`${regions.length} регіонів · ${enabledCount} активних`}
+        actions={
+          <Button variant="primary" icon="plus" onClick={openCreate}>Додати регіон</Button>
+        }
+      />
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', width: 320 }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
+            <Icon name="search" size={14} />
+          </span>
+          <input
+            className="input input-with-icon"
+            placeholder="Пошук по назві, slug або mount…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
         </div>
-      )}
-      {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
-      <div className="page-header">
-        <h1 className="page-title">Регіони</h1>
-        <button onClick={openCreate} className="btn-primary">+ Додати</button>
+
+        <div style={{ display: 'flex', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 3 }}>
+          {([
+            { v: 'all',      label: 'Всі',       count: regions.length },
+            { v: 'enabled',  label: 'Активні',   count: enabledCount },
+            { v: 'disabled', label: 'Вимкнені',  count: regions.length - enabledCount },
+          ] as const).map(t => (
+            <button
+              key={t.v}
+              onClick={() => setFilter(t.v)}
+              style={{
+                padding: '6px 12px', borderRadius: 7,
+                fontSize: 12, fontWeight: 500,
+                color: filter === t.v ? 'var(--text)' : 'var(--text-secondary)',
+                background: filter === t.v ? 'var(--bg-hover)' : 'transparent',
+                display: 'flex', alignItems: 'center', gap: 6,
+                border: 'none', cursor: 'pointer',
+              }}
+            >
+              {t.label}
+              <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.count}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Mobile cards */}
-      <div className="sm:hidden space-y-3">
-        {regions.map(r => (
-          <div key={r.id} className="card p-4 cursor-pointer hover:border-[#ff732e]/20 transition-colors"
-            onClick={() => navigate(`/regions/${r.id}`)}>
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <div className="font-semibold text-white">{r.name}</div>
-                <div className="text-xs text-[#5a5a62] font-mono mt-0.5">{r.icecast_mount}</div>
-              </div>
-              <span className={`badge mt-0.5 ${r.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#383840] text-[#7a7a85]'}`}>
-                {r.enabled ? 'Активний' : 'Вимкнений'}
-              </span>
-            </div>
-            <div className="text-xs text-[#7a7a85] mb-3">
-              Crossfade: {r.crossfade_sec}с · {RETURN_MODES.find(m => m.value === r.return_mode)?.label}
-            </div>
-            <div className="flex gap-2">
-              <button onClick={e => { e.stopPropagation(); navigate(`/regions/${r.id}`); }} className="btn-ghost flex-1 text-xs py-2">Відкрити</button>
-              <button onClick={e => { e.stopPropagation(); openEdit(r); }} className="btn-ghost text-xs py-2 px-3">✎</button>
-              <button onClick={e => { e.stopPropagation(); del(r.id); }} className="btn-danger border border-[#383840] rounded-lg px-3 py-2">✕</button>
-            </div>
-          </div>
-        ))}
-        {!regions.length && (
-          <div className="card p-10 text-center text-[#7a7a85] text-sm">Немає регіонів</div>
-        )}
-      </div>
-
-      {/* Desktop table */}
-      <div className="hidden sm:block card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+      {filtered.length === 0 ? (
+        <div className="card" style={{ padding: '60px 24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
+          {regions.length === 0 ? 'Немає регіонів. Натисніть «Додати регіон», щоб створити перший.' : 'Нічого не знайдено.'}
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table className="tbl">
             <thead>
-              <tr className="border-b border-[#383840]">
-                <th className="th">Назва</th>
-                <th className="th">Icecast маунт</th>
-                <th className="th">Статус</th>
-                <th className="th">Crossfade</th>
-                <th className="th">Повернення</th>
-                <th className="th w-24"></th>
+              <tr>
+                <th style={{ width: 36 }}></th>
+                <th>Назва</th>
+                <th>Icecast mount</th>
+                <th>Crossfade</th>
+                <th>Повернення</th>
+                <th>Статус</th>
+                <th style={{ width: 120 }}></th>
               </tr>
             </thead>
             <tbody>
-              {regions.map(r => (
-                <tr key={r.id} className="hover:bg-[#383840]/40 transition-colors cursor-pointer"
-                  onClick={() => navigate(`/regions/${r.id}`)}>
-                  <td className="td font-semibold text-white hover:text-[#ff732e] transition-colors">{r.name}</td>
-                  <td className="td font-mono text-xs text-[#7a7a85]">{r.icecast_mount}</td>
-                  <td className="td">
-                    <span className={`badge ${r.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-[#383840] text-[#7a7a85]'}`}>
-                      {r.enabled ? 'Активний' : 'Вимкнений'}
-                    </span>
+              {filtered.map(r => (
+                <tr
+                  key={r.id}
+                  onClick={() => navigate(`/regions/${r.id}`)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <td>
+                    <span
+                      className={`live-dot${r.enabled ? '' : ' muted'}`}
+                      style={{ width: 8, height: 8 }}
+                    />
                   </td>
-                  <td className="td text-[#7a7a85]">{r.crossfade_sec}с</td>
-                  <td className="td text-[#7a7a85] text-xs max-w-[180px] truncate">
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontWeight: 500 }}>{r.name}</span>
+                      <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
+                        {r.slug}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="mono col-muted" style={{ fontSize: 12 }}>{r.icecast_mount}</td>
+                  <td className="col-muted">{r.crossfade_sec}с</td>
+                  <td className="col-muted" style={{ fontSize: 12 }}>
                     {RETURN_MODES.find(m => m.value === r.return_mode)?.label}
                     {r.return_mode === 'timer' && ` (${r.return_timer_sec}с)`}
                   </td>
-                  <td className="td text-right" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => openEdit(r)} className="text-blue-400 hover:text-blue-300 text-xs mr-3">Редаг.</button>
-                    <button onClick={() => del(r.id)} className="text-red-400 hover:text-red-300 text-xs">Видалити</button>
+                  <td>
+                    <Badge tone={r.enabled ? 'success' : 'neutral'} dot>
+                      {r.enabled ? 'активний' : 'вимкнений'}
+                    </Badge>
+                  </td>
+                  <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
+                    <Button variant="ghost" size="sm" icon="edit" onClick={() => openEdit(r)} aria-label="Редагувати" />
+                    <Button variant="ghost" size="sm" icon="trash" onClick={() => setConfirm({ id: r.id, name: r.name })} aria-label="Видалити" />
                   </td>
                 </tr>
               ))}
-              {!regions.length && (
-                <tr><td colSpan={6} className="td text-center py-10 text-[#7a7a85]">Немає регіонів</td></tr>
-              )}
             </tbody>
           </table>
         </div>
-      </div>
-
-      {/* Modal */}
-      {modal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
-          <div className="modal-box max-h-[90vh] overflow-y-auto">
-            <div className="px-5 pt-5 pb-4 border-b border-[#383840]">
-              <h2 className="text-base font-bold text-white">
-                {modal === 'create' ? 'Новий регіон' : 'Редагувати регіон'}
-              </h2>
-            </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="text-xs text-[#7a7a85] mb-1.5 block">Назва *</label>
-                <input value={form.name} onChange={e => f('name', e.target.value)} className="input" placeholder="Схід" />
-              </div>
-              <div>
-                <label className="text-xs text-[#7a7a85] mb-1.5 block">Slug (латиниця) *</label>
-                <input value={form.slug}
-                  onChange={e => f('slug', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-                  className="input" placeholder="east" />
-              </div>
-              <div>
-                <label className="text-xs text-[#7a7a85] mb-1.5 block">Icecast маунт *</label>
-                <input value={form.icecast_mount} onChange={e => f('icecast_mount', e.target.value)} className="input" placeholder="/region_east" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-[#7a7a85] mb-1.5 block">Crossfade (сек)</label>
-                  <input type="number" min={0} max={10} value={form.crossfade_sec}
-                    onChange={e => f('crossfade_sec', +e.target.value)} className="input" />
-                </div>
-                <div>
-                  <label className="text-xs text-[#7a7a85] mb-1.5 block">Повернення в ефір</label>
-                  <Select value={form.return_mode} onChange={e => f('return_mode', e.target.value)}>
-                    {RETURN_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                  </Select>
-                </div>
-              </div>
-              {form.return_mode === 'timer' && (
-                <div>
-                  <label className="text-xs text-[#7a7a85] mb-1.5 block">Таймер (сек)</label>
-                  <input type="number" min={0} value={form.return_timer_sec}
-                    onChange={e => f('return_timer_sec', +e.target.value)} className="input" />
-                </div>
-              )}
-              <label className="flex items-center gap-3 cursor-pointer py-1">
-                <div className={`w-9 h-5 rounded-full transition-colors relative ${form.enabled ? 'bg-[#ff732e]' : 'bg-[#383840]'}`}
-                  onClick={() => f('enabled', !form.enabled)}>
-                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.enabled ? 'left-4' : 'left-0.5'}`} />
-                </div>
-                <span className="text-sm text-gray-300">Регіон активний</span>
-              </label>
-            </div>
-            <div className="px-5 pb-5 flex gap-3">
-              <button onClick={save} disabled={saving || !valid} className="btn-primary flex-1">
-                {saving ? 'Збереження...' : 'Зберегти'}
-              </button>
-              <button onClick={() => setModal(null)} className="btn-ghost">Скасувати</button>
-            </div>
-          </div>
-        </div>
       )}
+
+      <Modal
+        open={!!modal}
+        onClose={() => setModal(null)}
+        title={modal === 'create' ? 'Новий регіон' : 'Редагувати регіон'}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setModal(null)}>Скасувати</Button>
+            <Button variant="primary" onClick={save} disabled={!valid || saving}>
+              {saving ? 'Збереження…' : 'Зберегти'}
+            </Button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Field label="Назва" required>
+            <input className="input" value={form.name} onChange={e => f('name', e.target.value)} placeholder="Схід" />
+          </Field>
+          <Field label="Slug (латиниця)" required>
+            <input
+              className="input"
+              value={form.slug}
+              onChange={e => f('slug', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+              placeholder="east"
+            />
+          </Field>
+          <Field label="Icecast mount" required>
+            <input className="input" value={form.icecast_mount} onChange={e => f('icecast_mount', e.target.value)} placeholder="/region_east" />
+          </Field>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Crossfade, сек">
+              <input
+                type="number" min={0} max={10}
+                className="input"
+                value={form.crossfade_sec}
+                onChange={e => f('crossfade_sec', Number(e.target.value))}
+              />
+            </Field>
+            <Field label="Повернення в ефір">
+              <DropdownSelect
+                value={form.return_mode}
+                onChange={v => f('return_mode', v)}
+                options={RETURN_MODES}
+              />
+            </Field>
+          </div>
+          {form.return_mode === 'timer' && (
+            <Field label="Таймер, сек">
+              <input
+                type="number" min={0}
+                className="input"
+                value={form.return_timer_sec}
+                onChange={e => f('return_timer_sec', Number(e.target.value))}
+              />
+            </Field>
+          )}
+          <Toggle label="Регіон активний" value={form.enabled} onChange={v => f('enabled', v)} />
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!confirm}
+        onClose={() => setConfirm(null)}
+        title="Видалити регіон?"
+        subtitle={confirm?.name}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirm(null)}>Скасувати</Button>
+            <Button variant="danger" icon="trash" onClick={doDelete}>Видалити</Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+          Це також видалить усі пов'язані розклади та призначення. Дію неможливо скасувати.
+        </p>
+      </Modal>
     </div>
   );
 }
+

@@ -26,6 +26,9 @@ export class IcecastSource extends EventEmitter {
   private socket: net.Socket | null = null;
   private relayProc: ChildProcess | null = null;
   private relayStarting = false; // guard against concurrent relay spawns
+  private relayUseBackup = false;     // persists across proc lifecycles
+  private relayFailCount = 0;          // persists across proc restarts (local var was resetting each spawn → backup never engaged)
+  private relayStderrTail: string[] = []; // ring buffer of last relay stderr lines for diagnostics
   private adProc: ChildProcess | null = null;
   private mode: FeedMode = 'main';
   private connected = false;
@@ -34,6 +37,8 @@ export class IcecastSource extends EventEmitter {
   private relaySourceUrl = '';
   private backupSourceUrl = '';
   private usingBackup = false;
+  private lastRelayDataMs = 0;       // watchdog input
+  private dataWatchdog: NodeJS.Timeout | null = null;
 
   constructor(
     private host: string,
@@ -114,9 +119,55 @@ export class IcecastSource extends EventEmitter {
       try {
         await this.connect();
         console.log(`[IcecastSource:${this.mount}] reconnected`);
+        // On SOURCE socket recovery, force-restart the relay ffmpeg.
+        // The relay may be stuck in an HTTP-reconnect loop against a master
+        // URL that was down during the outage — kicking it forces a fresh
+        // fetch so data starts flowing to the newly-reconnected socket right
+        // away instead of waiting for Icecast's no-data timeout to drop us
+        // again. Without this, a master-side outage followed by recovery
+        // could leave the region mount permanently silent until the operator
+        // toggled the region off/on.
+        this._kickRelay('socket-reconnected');
         this.emit('reconnected');
       } catch { this._scheduleReconnect(3000); }
     }, ms);
+  }
+
+  /**
+   * Force the relay ffmpeg to restart. The existing exit handler will
+   * respawn it with a short delay (2s). Safe to call when the relay is
+   * already dead — it's a no-op.
+   */
+  private _kickRelay(reason: string) {
+    if (this.relayProc) {
+      console.log(`[IcecastSource:${this.mount}] kicking relay (${reason})`);
+      try { this.relayProc.kill('SIGKILL'); } catch {}
+      // relayProc is cleared by the exit handler
+    } else if (!this.relayStarting && !this.stopped && this.relaySourceUrl) {
+      // No proc alive AND nothing pending — start a fresh one now.
+      console.log(`[IcecastSource:${this.mount}] starting relay (${reason})`);
+      this._startRelay(this.relayUseBackup);
+    }
+  }
+
+  /**
+   * Data-flow watchdog. If the relay is supposedly running and the SOURCE
+   * socket is connected but nothing has been written for a long time, the
+   * relay is stuck — kick it. Runs every 5 s while mode === 'main'.
+   */
+  private _startDataWatchdog() {
+    if (this.dataWatchdog) return;
+    this.dataWatchdog = setInterval(() => {
+      if (this.stopped) return;
+      if (this.mode !== 'main') return;           // ad mode has its own flow
+      if (!this.connected) return;                // reconnect handles this
+      if (!this.relayProc) return;                // exit handler will restart
+      const gap = Date.now() - this.lastRelayDataMs;
+      if (this.lastRelayDataMs > 0 && gap > 15_000) {
+        console.log(`[IcecastSource:${this.mount}] relay silent ${gap}ms — kicking`);
+        this._kickRelay(`no-data ${Math.round(gap / 1000)}s`);
+      }
+    }, 5000);
   }
 
   // ── Internal: write chunk to socket ───────────────────────────────────────
@@ -144,7 +195,10 @@ export class IcecastSource extends EventEmitter {
   feedStream(sourceUrl: string, backupUrl = '') {
     this.relaySourceUrl = sourceUrl;
     this.backupSourceUrl = backupUrl;
+    this.relayUseBackup = false;
+    this.relayFailCount = 0;
     this._startRelay(false);
+    this._startDataWatchdog();
   }
 
   private _startRelay(useBackup: boolean) {
@@ -153,13 +207,12 @@ export class IcecastSource extends EventEmitter {
     if (this.stopped) return;
 
     this.relayStarting = true;
+    this.relayUseBackup = useBackup;
 
     const url = (useBackup && this.backupSourceUrl) ? this.backupSourceUrl : this.relaySourceUrl;
     this.usingBackup = useBackup && !!this.backupSourceUrl;
 
     console.log(`[IcecastSource:${this.mount}] relay starting${this.usingBackup ? ' (BACKUP)' : ''}`);
-
-    let failCount = 0;
 
     const proc = spawn('ffmpeg', [
       '-reconnect', '1',
@@ -170,14 +223,29 @@ export class IcecastSource extends EventEmitter {
       '-acodec', 'libmp3lame', '-b:a', '320k', '-ar', '48000',
       '-f', 'mp3',
       'pipe:1',
-    ], { stdio: ['ignore', 'pipe', 'ignore'] });
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });  // capture stderr for diagnostics
 
     this.relayProc = proc;
     this.relayStarting = false;
 
     proc.stdout?.on('data', (chunk: Buffer) => {
-      failCount = 0;
+      // Fresh data means the master is healthy — reset failure counter so
+      // the next exit (e.g. a transient network blip) doesn't instantly
+      // toggle to backup.
+      this.relayFailCount = 0;
+      this.lastRelayDataMs = Date.now();
       this._write(chunk, 'main');
+    });
+
+    // Keep the last ~20 lines of stderr. When something goes wrong (e.g.
+    // HTTP 404 on the master URL because the upstream streamer is down)
+    // ffmpeg prints it here — without this we had no diagnostic signal.
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      const lines = chunk.toString().split('\n').filter(l => l.trim());
+      for (const line of lines) {
+        this.relayStderrTail.push(line);
+        if (this.relayStderrTail.length > 20) this.relayStderrTail.shift();
+      }
     });
 
     proc.on('exit', (code, signal) => {
@@ -186,11 +254,12 @@ export class IcecastSource extends EventEmitter {
       this.relayStarting = false;
 
       if (!this.stopped) {
-        failCount++;
-        const tryBackup = !useBackup && failCount >= 3 && !!this.backupSourceUrl;
+        this.relayFailCount++;
+        const tryBackup = !useBackup && this.relayFailCount >= 3 && !!this.backupSourceUrl;
         if (tryBackup) {
-          console.log(`[IcecastSource:${this.mount}] primary failed ${failCount}x — switching to backup`);
+          console.log(`[IcecastSource:${this.mount}] primary failed ${this.relayFailCount}x — switching to backup`);
           this.emit('source_switch', { from: this.relaySourceUrl, to: this.backupSourceUrl });
+          this.relayFailCount = 0;
           setTimeout(() => this._startRelay(true), 1000);
         } else {
           const returnToPrimary = useBackup && Math.random() < 0.25;
@@ -198,6 +267,11 @@ export class IcecastSource extends EventEmitter {
         }
       }
     });
+  }
+
+  /** Last N stderr lines from the relay ffmpeg — for diagnostics endpoints. */
+  getRelayStderrTail(): string[] {
+    return [...this.relayStderrTail];
   }
 
   // ── Ad feed ───────────────────────────────────────────────────────────────
@@ -272,6 +346,7 @@ export class IcecastSource extends EventEmitter {
   stop() {
     this.stopped = true;
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    if (this.dataWatchdog) { clearInterval(this.dataWatchdog); this.dataWatchdog = null; }
     if (this.relayProc) { this.relayProc.kill('SIGKILL'); this.relayProc = null; }
     if (this.adProc) { this.adProc.kill('SIGKILL'); this.adProc = null; }
     if (this.socket) { this.connected = false; this.socket.destroy(); this.socket = null; }

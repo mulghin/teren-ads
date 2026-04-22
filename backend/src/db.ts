@@ -26,10 +26,11 @@ export async function getSetting(key: string): Promise<string> {
   return res.rows[0]?.value ?? '';
 }
 
-export async function setSetting(key: string, value: string) {
+export async function setSetting(key: string, value: unknown) {
+  const v = value === null || value === undefined ? '' : String(value);
   await pool.query(
-    'INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',
-    [key, value]
+    'INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value',
+    [key, v]
   );
 }
 

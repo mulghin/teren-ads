@@ -5,6 +5,30 @@ import { getIO } from '../socket';
 
 const router = Router();
 
+const MOUNT_RE = /^\/[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const NAME_RE = /^[^\x00-\x1f\x7f]{1,128}$/;
+
+function validateRegionInput(body: any, { partial = false } = {}): string | null {
+  if (!body || typeof body !== 'object') return 'body must be an object';
+  const { name, slug, icecast_mount } = body;
+  if (name !== undefined) {
+    if (typeof name !== 'string' || !NAME_RE.test(name)) return 'invalid name';
+  } else if (!partial) return 'name required';
+
+  if (slug !== undefined) {
+    if (typeof slug !== 'string' || !SLUG_RE.test(slug)) return 'invalid slug (lowercase a-z, 0-9, dash)';
+  } else if (!partial) return 'slug required';
+
+  if (icecast_mount !== undefined) {
+    if (typeof icecast_mount !== 'string' || !MOUNT_RE.test(icecast_mount)) {
+      return 'invalid icecast_mount (must be /[A-Za-z0-9_-]+)';
+    }
+  } else if (!partial) return 'icecast_mount required';
+
+  return null;
+}
+
 // GET all regions with live status
 router.get('/', async (req, res) => {
   const dbRows = await pool.query(`SELECT * FROM regions ORDER BY id`);
@@ -37,6 +61,8 @@ router.get('/:id', async (req, res) => {
 
 // POST create region
 router.post('/', async (req, res) => {
+  const err = validateRegionInput(req.body);
+  if (err) return res.status(400).json({ error: err });
   const {
     name, slug, icecast_mount,
     crossfade_sec = 1, crossfade_in_enabled = true, crossfade_out_sec = 0,
@@ -56,6 +82,8 @@ router.post('/', async (req, res) => {
 
 // PUT update region
 router.put('/:id', async (req, res) => {
+  const err = validateRegionInput(req.body, { partial: true });
+  if (err) return res.status(400).json({ error: err });
   const { id } = req.params;
   const {
     name, slug, icecast_mount,
@@ -77,8 +105,21 @@ router.put('/:id', async (req, res) => {
 
 // DELETE region
 router.delete('/:id', async (req, res) => {
-  const { id } = req.params;
-  try { await regionManager.stopRegion(parseInt(id)); } catch {} // region may not be in manager if disabled
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' });
+  const force = req.query.force === '1';
+
+  const rp = regionManager.getAll().find(r => r.state.id === id);
+  if (rp && rp.state.mode !== 'stopped' && !force) {
+    return res.status(409).json({ error: 'region is active — stop it first or use ?force=1' });
+  }
+
+  try {
+    await regionManager.stopRegion(id);
+  } catch (e: any) {
+    console.warn(`[regions] stopRegion(${id}) during delete failed: ${e?.message || e}`);
+    if (!force) return res.status(500).json({ error: `stop failed: ${e?.message || e}` });
+  }
   await pool.query(`DELETE FROM regions WHERE id=$1`, [id]);
   await regionManager.reload();
   res.json({ ok: true });
