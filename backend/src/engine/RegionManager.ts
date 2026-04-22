@@ -18,16 +18,23 @@ class RegionManager {
 
   async reload() {
     const res = await pool.query(`SELECT * FROM regions ORDER BY id`);
-    const dbIds = new Set(res.rows.map((r: any) => r.id));
+    // Disabled rows are treated the same as deleted ones — stop the process
+    // and drop it from the in-memory map. Otherwise toggling "вимкнений" in
+    // the UI only hides the badge while the stream keeps running and the
+    // dashboard still shows the region as live.
+    const liveIds = new Set(
+      res.rows.filter((r: any) => r.enabled).map((r: any) => r.id)
+    );
 
     for (const [id, rp] of this.regions) {
-      if (!dbIds.has(id)) {
+      if (!liveIds.has(id)) {
         await rp.stop();
         this.regions.delete(id);
       }
     }
 
     for (const row of res.rows) {
+      if (!row.enabled) continue;
       if (!this.regions.has(row.id)) {
         this.regions.set(row.id, new RegionProcess(row));
       } else {

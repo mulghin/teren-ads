@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import { useRegionUpdates, useSocket } from '../hooks/useSocket';
+import { useRegionConfig, useRegionUpdates, useSocket } from '../hooks/useSocket';
 import {
   Badge,
   BadgeTone,
@@ -22,6 +22,7 @@ type Region = {
   id: number;
   name: string;
   icecast_mount?: string;
+  enabled?: boolean;
   status?: Mode;
   live?: { mode?: Mode; currentFile?: string | null };
 };
@@ -68,6 +69,18 @@ export default function Dashboard() {
     setRegions(prev => prev.map(r => (r.id === u.id ? { ...r, live: u, status: u.mode } : r)));
   });
 
+  useRegionConfig((cfg: any) => {
+    setRegions(prev => {
+      if (cfg.event === 'deleted') return prev.filter(r => r.id !== cfg.id);
+      const idx = prev.findIndex(r => r.id === cfg.id);
+      if (idx === -1) return [...prev, cfg];
+      const next = prev.slice();
+      // Preserve the live field — it's a separate stream of updates
+      next[idx] = { ...next[idx], ...cfg, live: next[idx].live };
+      return next;
+    });
+  });
+
   const action = async (fn: () => Promise<any>, id: number, successTitle: string) => {
     if (busyRef.current !== null) return; // ref-guard: blocks fast double-clicks before re-render
     busyRef.current = id;
@@ -96,13 +109,19 @@ export default function Dashboard() {
     }
   };
 
+  // Disabled regions shouldn't appear on the live dashboard at all — the
+  // stream is stopped, and leaving them in the grid contradicted the
+  // "вимкнений" badge on the Regions page. Users toggle them back on from
+  // /regions if they want them to reappear.
+  const liveRegions = useMemo(() => regions.filter(r => r.enabled !== false), [regions]);
+
   const counts = useMemo(() => {
     const c: Record<Mode, number> = { main: 0, ad: 0, filler: 0, stopped: 0 };
-    regions.forEach(r => { c[modeOf(r)]++; });
+    liveRegions.forEach(r => { c[modeOf(r)]++; });
     return c;
-  }, [regions]);
+  }, [liveRegions]);
 
-  const filtered = filter === 'all' ? regions : regions.filter(r => modeOf(r) === filter);
+  const filtered = filter === 'all' ? liveRegions : liveRegions.filter(r => modeOf(r) === filter);
 
   if (loading) {
     return (
@@ -127,7 +146,7 @@ export default function Dashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
         <KpiCard
           label="В ефірі"
-          value={`${counts.main} / ${regions.length}`}
+          value={`${counts.main} / ${liveRegions.length}`}
           tone="accent"
           icon="broadcast"
           sub="регіони в основному режимі"
@@ -164,7 +183,7 @@ export default function Dashboard() {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Регіони · live</h3>
-            <Badge tone="neutral">{regions.length}</Badge>
+            <Badge tone="neutral">{liveRegions.length}</Badge>
           </div>
           <DropdownSelect
             size="sm"

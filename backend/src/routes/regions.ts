@@ -78,6 +78,9 @@ router.post('/', async (req, res) => {
      loudnorm_enabled, loudnorm_target, return_mode, return_timer_sec, enabled]
   );
   await regionManager.reload();
+  // Broadcast the new row so live clients (dashboard, regions list) update
+  // their config-derived state (enabled flag, rename) without a page reload.
+  getIO()?.emit('region:config', { ...r.rows[0], event: 'created' });
   res.json(r.rows[0]);
 });
 
@@ -101,6 +104,7 @@ router.put('/:id', async (req, res) => {
   );
   if (!r.rows[0]) return res.status(404).json({ error: 'Region not found' });
   await regionManager.reload();
+  getIO()?.emit('region:config', { ...r.rows[0], event: 'updated' });
   res.json(r.rows[0]);
 });
 
@@ -123,6 +127,7 @@ router.delete('/:id', async (req, res) => {
   }
   await pool.query(`DELETE FROM regions WHERE id=$1`, [id]);
   await regionManager.reload();
+  getIO()?.emit('region:config', { id, event: 'deleted' });
   res.json({ ok: true });
 });
 

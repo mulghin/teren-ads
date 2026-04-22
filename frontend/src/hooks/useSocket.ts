@@ -71,3 +71,17 @@ export function useRegionUpdates(onUpdate: (data: any) => void) {
     };
   }, []);
 }
+
+// Broadcast of a region's DB row (event: 'created' | 'updated' | 'deleted'),
+// used to keep config-derived UI (enabled flag, name) in sync across clients.
+export function useRegionConfig(onEvent: (data: any) => void) {
+  const cbRef = useRef(onEvent);
+  cbRef.current = onEvent;
+
+  useEffect(() => {
+    const s = getSocket();
+    const handler = (data: any) => cbRef.current(data);
+    s.on('region:config', handler);
+    return () => { s.off('region:config', handler); };
+  }, []);
+}
