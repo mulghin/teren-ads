@@ -4,6 +4,7 @@ import {
   useRef,
   useMemo,
   useCallback,
+  useLayoutEffect,
   createContext,
   useContext,
   type ReactNode,
@@ -11,6 +12,7 @@ import {
   type InputHTMLAttributes,
   type CSSProperties,
 } from 'react';
+import { createPortal } from 'react-dom';
 
 // ---------- Icons ----------
 export type IconName =
@@ -495,43 +497,88 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 type Opt<V extends string | number> = { value: V; label: string; icon?: IconName };
 
 export function DropdownSelect<V extends string | number>({
-  value, onChange, options, size = 'md', width,
+  value, onChange, options, size = 'md', width, disabled,
 }: {
   value: V;
   onChange: (v: V) => void;
   options: Opt<V>[];
   size?: 'sm' | 'md';
   width?: number | string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  // Position popup via button's rect so an `overflow: auto` ancestor (modal
+  // body, card, etc.) can't clip it. Reposition on scroll/resize; close if
+  // the trigger scrolls out of view.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const el = btnRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
+
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t)) return;
+      if (popRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   const curr = options.find(o => o.value === value) || options[0];
+  const height = size === 'sm' ? 28 : 36;
   return (
-    <div ref={ref} style={{ position: 'relative', width }}>
-      <button className={`input`}
-              onClick={() => setOpen(!open)}
-              style={{ justifyContent: 'space-between', cursor: 'pointer', width: '100%', height: size === 'sm' ? 28 : 36 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ position: 'relative', width }}>
+      <button ref={btnRef} type="button" className="input"
+              disabled={disabled}
+              onClick={() => !disabled && setOpen(v => !v)}
+              style={{
+                justifyContent: 'space-between',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                width: '100%', height,
+                opacity: disabled ? 0.55 : 1,
+              }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {curr?.icon && <Icon name={curr.icon} size={13} />}
           {curr?.label}
         </span>
-        <Icon name="chevronDown" size={13} />
+        <Icon name="chevronDown" size={13} className={open ? 'dd-chevron-open' : ''} />
       </button>
-      {open && (
-        <div className="glass" style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
-          borderRadius: 10, padding: 4, zIndex: 20,
+      {open && rect && createPortal(
+        <div ref={popRef} className="glass" style={{
+          position: 'fixed', top: rect.top, left: rect.left, width: rect.width,
+          borderRadius: 10, padding: 4, zIndex: 200,
           boxShadow: 'var(--shadow-md)',
           animation: 'fade-in 0.14s ease',
           minWidth: 160,
+          maxHeight: '60vh', overflowY: 'auto',
         }}>
           {options.map(o => (
             <button key={String(o.value)}
+                    type="button"
                     onClick={() => { onChange(o.value); setOpen(false); }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 8,
@@ -539,14 +586,18 @@ export function DropdownSelect<V extends string | number>({
                       borderRadius: 6,
                       fontSize: 13, color: 'var(--text)',
                       background: value === o.value ? 'var(--bg-hover)' : 'transparent',
+                      border: 'none', cursor: 'pointer',
                       justifyContent: 'flex-start',
-                    }}>
+                    }}
+                    onMouseEnter={e => { if (value !== o.value) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                    onMouseLeave={e => { if (value !== o.value) e.currentTarget.style.background = 'transparent'; }}>
               {o.icon && <Icon name={o.icon} size={13} />}
               <span style={{ flex: 1, textAlign: 'left' }}>{o.label}</span>
               {value === o.value && <Icon name="check" size={13} />}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

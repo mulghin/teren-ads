@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { api, ApiError, Me } from '../api';
 import { useMe } from '../contexts/AuthContext';
 import {
-  Badge, Button, Field, Modal, PageHeader, useToast,
+  Badge, Button, DropdownSelect, Field, Modal, PageHeader, useToast,
 } from '../components/ui';
 
 type Role = 'admin' | 'operator' | 'viewer';
@@ -360,11 +360,15 @@ function AddUserModal({ open, onClose, onCreated }: { open: boolean; onClose: ()
                  value={password} onChange={e => setPassword(e.target.value)} placeholder="≥ 8 символів" />
         </Field>
         <Field label="Роль">
-          <select className="input" value={role} onChange={e => setRole(e.target.value as Role)}>
-            <option value="operator">operator</option>
-            <option value="admin">admin</option>
-            <option value="viewer">viewer</option>
-          </select>
+          <DropdownSelect<Role>
+            value={role}
+            onChange={setRole}
+            options={[
+              { value: 'operator', label: 'operator' },
+              { value: 'admin',    label: 'admin' },
+              { value: 'viewer',   label: 'viewer' },
+            ]}
+          />
         </Field>
         {error && (
           <div style={{
@@ -436,11 +440,16 @@ function EditUserModal({
           <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="Display name" />
         </Field>
         <Field label="Роль">
-          <select className="input" value={role} onChange={e => setRole(e.target.value as Role)} disabled={isMe}>
-            <option value="admin">admin</option>
-            <option value="operator">operator</option>
-            <option value="viewer">viewer</option>
-          </select>
+          <DropdownSelect<Role>
+            value={role}
+            onChange={setRole}
+            disabled={isMe}
+            options={[
+              { value: 'admin',    label: 'admin' },
+              { value: 'operator', label: 'operator' },
+              { value: 'viewer',   label: 'viewer' },
+            ]}
+          />
           {isMe && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
             Не можна змінити власну роль
           </span>}

@@ -233,27 +233,9 @@
 }
 .input-with-icon { padding-left: 36px; }
 
-/* Select: kill the native chrome (shiny gradient on WebKit, native arrow
-   everywhere) and draw our own chevron via a background SVG. Keeps the
-   .input look consistent across <input> and <select>. */
-select.input {
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  padding-right: 34px;
-  cursor: pointer;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8f99' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 12px 12px;
-}
-select.input::-ms-expand { display: none; }
-/* Option list itself is rendered by the OS and mostly un-stylable, but on
-   Chromium-based browsers these hints darken the popup to match the app. */
-select.input option {
-  background: var(--bg-panel);
-  color: var(--text);
-}
+/* DropdownSelect: rotate the chevron when the popup is open */
+.dd-chevron-open { transform: rotate(180deg); }
+.input > svg { transition: transform 0.15s ease; }
 
 /* Badge */
 .badge {
