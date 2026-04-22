@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomUUID } from 'crypto';
 import { getAllSettings, getSetting, setSetting } from '../db';
 import { toneDetector } from '../engine/ToneDetector';
 import { silenceWatchdog } from '../engine/SilenceWatchdog';
@@ -108,7 +109,12 @@ const SETTING_VALIDATORS: Record<string, Validator> = {
 const ALLOWED_SETTINGS = Object.keys(SETTING_VALIDATORS);
 
 const SENSITIVE_KEYS = new Set(['icecast_source_password', 'icecast_admin_password', 'webhook_secret', 'telegram_bot_token']);
-const MASK = '***';
+// Unguessable sentinel: prefix + UUID. Frontend round-trips the exact string
+// when a secret field isn't edited; PUT recognises the prefix and skips.
+// Matching by prefix (not exact string) means a post-restart FE cache still works.
+const MASK_PREFIX = '__secret_unchanged_';
+const MASK = `${MASK_PREFIX}${randomUUID()}__`;
+const isMaskedSentinel = (v: unknown) => typeof v === 'string' && v.startsWith(MASK_PREFIX);
 const TONE_KEYS = new Set(['tone_start_hz', 'tone_stop_hz', 'tone_duration_ms', 'tone_detection_enabled', 'source_url']);
 
 router.get('/', async (req, res) => {
@@ -132,7 +138,7 @@ router.put('/', async (req, res) => {
   for (const key of ALLOWED_SETTINGS) {
     if (!(key in body)) continue;
     const raw = body[key];
-    if (SENSITIVE_KEYS.has(key) && raw === MASK) continue;
+    if (SENSITIVE_KEYS.has(key) && isMaskedSentinel(raw)) continue;
 
     const r = SETTING_VALIDATORS[key](raw);
     if (!r.ok) {

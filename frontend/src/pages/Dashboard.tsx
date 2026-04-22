@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import { useRegionUpdates, useSocket } from '../hooks/useSocket';
 import {
@@ -45,6 +45,7 @@ export default function Dashboard() {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
+  const busyRef = useRef<number | null>(null);
   const [filter, setFilter] = useState<'all' | Mode>('all');
 
   const [triggerModal, setTriggerModal] = useState<Region | null>(null);
@@ -68,6 +69,8 @@ export default function Dashboard() {
   });
 
   const action = async (fn: () => Promise<any>, id: number, successTitle: string) => {
+    if (busyRef.current !== null) return; // ref-guard: blocks fast double-clicks before re-render
+    busyRef.current = id;
     setBusy(id);
     try {
       await fn();
@@ -75,6 +78,7 @@ export default function Dashboard() {
     } catch (e: any) {
       notify({ title: 'Помилка', body: e?.message || 'Не вдалося виконати дію', tone: 'error', icon: 'warn' });
     } finally {
+      busyRef.current = null;
       setBusy(null);
     }
   };

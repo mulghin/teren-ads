@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Component, ReactNode, useEffect, useMemo, useState } from 'react';
 import { Routes, Route, useLocation, useNavigate, matchPath } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import RegionsPage from './pages/RegionsPage';
@@ -47,11 +47,40 @@ function useIsMobile() {
   return isMobile;
 }
 
+class ErrorBoundary extends Component<{ children: ReactNode }, { err: Error | null }> {
+  state = { err: null as Error | null };
+  static getDerivedStateFromError(err: Error) { return { err }; }
+  componentDidCatch(err: Error, info: { componentStack: string }) {
+    console.error('[ErrorBoundary]', err, info.componentStack);
+  }
+  render() {
+    if (!this.state.err) return this.props.children;
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ maxWidth: 520, textAlign: 'center' }}>
+          <h1 style={{ fontSize: 28, marginBottom: 12 }}>Щось пішло не так</h1>
+          <p style={{ opacity: 0.7, marginBottom: 24 }}>
+            Сталася помилка при рендерингу сторінки. Спробуйте перезавантажити.
+          </p>
+          <pre style={{ fontSize: 12, opacity: 0.5, whiteSpace: 'pre-wrap', marginBottom: 24 }}>
+            {this.state.err.message}
+          </pre>
+          <button onClick={() => window.location.reload()} className="btn btn-primary">
+            Перезавантажити
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
+
 export default function App() {
   return (
-    <ToastProvider>
-      <Shell />
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <Shell />
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }
 

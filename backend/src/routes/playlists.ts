@@ -141,7 +141,8 @@ router.delete('/:id', async (req, res) => {
   try {
     await pool.query(`DELETE FROM playlists WHERE id=$1`, [pid]);
   } catch (e: any) {
-    return res.status(409).json({ error: `cannot delete playlist: ${e.message}` });
+    console.error('[playlists/delete]', pid, e);
+    return res.status(409).json({ error: 'cannot delete playlist (references in use)' });
   }
 
   const dir = path.join(UPLOADS_DIR, String(pid));

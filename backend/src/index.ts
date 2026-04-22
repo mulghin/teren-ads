@@ -3,8 +3,9 @@ import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { initDb, pool } from './db';
-import { initSocket } from './socket';
+import { initSocket, parseCorsOrigins } from './socket';
 import { regionManager } from './engine/RegionManager';
 import { toneDetector } from './engine/ToneDetector';
 import { scheduler } from './engine/Scheduler';
@@ -27,10 +28,7 @@ async function main() {
   const app = express();
   const server = http.createServer(app);
 
-  const corsOrigin = (process.env.CORS_ORIGIN || 'http://localhost:5173')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
+  const corsOrigin = parseCorsOrigins(process.env.CORS_ORIGIN);
   app.use(cors({ origin: corsOrigin }));
   app.use(express.json());
 
@@ -81,9 +79,13 @@ async function main() {
     });
   });
 
+  const isProd = process.env.NODE_ENV === 'production';
   app.use((err: any, req: any, res: any, next: any) => {
-    console.error('[error]', err.message);
-    res.status(500).json({ error: err.message });
+    const reqId = randomUUID().slice(0, 8);
+    console.error(`[error ${reqId}]`, req.method, req.originalUrl, err);
+    const payload: any = { error: 'internal server error', requestId: reqId };
+    if (!isProd) payload.debug = err?.message;
+    res.status(500).json(payload);
   });
 
   initSocket(server);

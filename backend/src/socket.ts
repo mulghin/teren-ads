@@ -4,11 +4,27 @@ import { regionManager } from './engine/RegionManager';
 
 let io: IOServer | null = null;
 
+export function parseCorsOrigins(raw: string | undefined, fallback = 'http://localhost:5173'): string[] {
+  const out: string[] = [];
+  for (const entry of (raw || fallback).split(',')) {
+    const s = entry.trim();
+    if (!s) continue;
+    try {
+      const u = new URL(s);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        console.warn(`[cors] ignoring non-http(s) origin: ${s}`);
+        continue;
+      }
+      out.push(u.origin);
+    } catch {
+      console.warn(`[cors] ignoring malformed origin: ${s}`);
+    }
+  }
+  return out;
+}
+
 export function initSocket(server: HttpServer) {
-  const corsOrigin = (process.env.CORS_ORIGIN || 'http://localhost:5173')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
+  const corsOrigin = parseCorsOrigins(process.env.CORS_ORIGIN);
   io = new IOServer(server, {
     cors: { origin: corsOrigin }
   });

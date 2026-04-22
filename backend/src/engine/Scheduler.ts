@@ -1,10 +1,17 @@
 import cron from 'node-cron';
 import { pool } from '../db';
 import { regionManager } from './RegionManager';
+import { getIO } from '../socket';
 
 const DAY_MAP: Record<string, number> = {
   sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6
 };
+
+function emitSkip(details: { scheduleId: number; reason: string; raw?: unknown }) {
+  const payload = { ...details, at: new Date().toISOString() };
+  console.warn(`[Scheduler] skip id=${details.scheduleId} reason=${details.reason}`, details.raw ?? '');
+  try { getIO()?.emit('scheduler:skip', payload); } catch {}
+}
 
 class Scheduler {
   private tasks: cron.ScheduledTask[] = [];
@@ -33,18 +40,27 @@ class Scheduler {
   private scheduleRow(row: any) {
     let times: string[] = [];
     try { times = JSON.parse(row.times); } catch {}
-    if (!times.length) return;
+    if (!times.length) {
+      emitSkip({ scheduleId: row.id, reason: 'no_times', raw: row.times });
+      return;
+    }
 
-    const days = row.days === 'all' ? '0-6' : this.parseDays(row.days);
+    const days = row.days === 'all' ? '0-6' : this.parseDays(row.days, row.id);
     if (!days) {
-      console.warn(`[Scheduler] schedule id=${row.id} has no valid days — skipped`);
+      emitSkip({ scheduleId: row.id, reason: 'no_valid_days', raw: row.days });
       return;
     }
 
     for (const time of times) {
-      if (typeof time !== 'string' || !/^([0-9]{1,2}):([0-9]{2})$/.test(time)) continue;
+      if (typeof time !== 'string' || !/^([0-9]{1,2}):([0-9]{2})$/.test(time)) {
+        emitSkip({ scheduleId: row.id, reason: 'invalid_time', raw: time });
+        continue;
+      }
       const [h, m] = time.split(':').map(Number);
-      if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) continue;
+      if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+        emitSkip({ scheduleId: row.id, reason: 'invalid_time', raw: time });
+        continue;
+      }
 
       const expr = `${m} ${h} * * ${days}`;
       try {
@@ -78,7 +94,7 @@ class Scheduler {
     this.tasks = [];
   }
 
-  private parseDays(days: string): string {
+  private parseDays(days: string, scheduleId?: number): string {
     const mapped: number[] = [];
     for (const raw of days.split(',')) {
       const token = raw.trim().toLowerCase();
@@ -92,7 +108,9 @@ class Scheduler {
         mapped.push(n);
         continue;
       }
-      console.warn(`[Scheduler] Unknown day token "${raw}" — skipped`);
+      if (scheduleId !== undefined) {
+        emitSkip({ scheduleId, reason: 'unknown_day_token', raw });
+      }
     }
     return mapped.length ? [...new Set(mapped)].sort().join(',') : '';
   }

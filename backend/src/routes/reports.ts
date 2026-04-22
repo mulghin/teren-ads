@@ -211,7 +211,8 @@ router.get('/mediaplan/xlsx', async (req, res) => {
     await workbook.xlsx.write(res);
     res.end();
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    console.error('[reports/mediaplan]', e);
+    res.status(500).json({ error: 'failed to generate mediaplan' });
   }
 });
 
