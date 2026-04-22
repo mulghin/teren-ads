@@ -5,6 +5,7 @@ import { toneDetector } from '../engine/ToneDetector';
 import { silenceWatchdog } from '../engine/SilenceWatchdog';
 import { regionManager } from '../engine/RegionManager';
 import { sendTelegramTest } from '../engine/TelegramNotifier';
+import { icyHealth } from '../engine/IcyMetadata';
 
 const router = Router();
 
@@ -207,6 +208,18 @@ router.put('/', async (req, res) => {
   }
 
   res.json({ ok: true });
+});
+
+// Lightweight probe so the Settings UI can surface a red banner when the
+// admin password is wrong. Only reports the last attempt — consumers decide
+// whether to show it based on status (401/403 matter; 0/timeout is ambiguous).
+router.get('/icy-health', (req, res) => {
+  res.json({
+    lastTriedAt: icyHealth.lastTriedAt,
+    lastSuccessAt: icyHealth.lastSuccessAt,
+    lastStatus: icyHealth.lastStatus,
+    lastError: icyHealth.lastError,
+  });
 });
 
 router.post('/telegram/test', async (req, res) => {

@@ -8,6 +8,7 @@ export default function SettingsPage() {
   const [initial, setInitial] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [testingTg, setTestingTg] = useState(false);
+  const [icyHealth, setIcyHealth] = useState<{ lastStatus: number | null; lastError: string | null } | null>(null);
 
   useEffect(() => {
     api.getSettings().then((s: Record<string, string>) => {
@@ -15,6 +16,24 @@ export default function SettingsPage() {
       setInitial(s);
     });
   }, []);
+
+  // Poll metadata push health so the red banner clears within seconds of the
+  // admin password being fixed. Only surface auth failures (401/403) — network
+  // errors are usually misconfigured host/port and already obvious elsewhere.
+  useEffect(() => {
+    let alive = true;
+    const fetchHealth = async () => {
+      try {
+        const h = await api.getIcyHealth();
+        if (alive) setIcyHealth({ lastStatus: h.lastStatus, lastError: h.lastError });
+      } catch { /* ignore */ }
+    };
+    fetchHealth();
+    const id = setInterval(fetchHealth, 5000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
+  const icyAuthFailure = icyHealth?.lastStatus === 401 || icyHealth?.lastStatus === 403;
 
   const set = (k: string, v: string) => setSettings(p => ({ ...p, [k]: v }));
 
@@ -99,6 +118,20 @@ export default function SettingsPage() {
                 placeholder="hackme" />
             </Field>
           </div>
+          {icyAuthFailure && (
+            <div style={{
+              padding: '10px 12px', borderRadius: 8,
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              color: '#fca5a5', fontSize: 12, lineHeight: 1.45,
+            }}>
+              <strong style={{ color: '#fecaca' }}>Метадані: помилка {icyHealth?.lastStatus} admin</strong>
+              <div style={{ marginTop: 2, color: 'rgba(252, 165, 165, 0.8)' }}>
+                Icecast відхиляє оновлення метаданих — схоже, admin password не збігається.
+                Перевір та збережи правильний Admin password, і банер зникне протягом кількох секунд.
+              </div>
+            </div>
+          )}
           <Field label="Stream name" hint="Показується у статусі Icecast для всіх регіональних mount'ів">
             <input type="text" className="input"
               value={settings.stream_name ?? ''}

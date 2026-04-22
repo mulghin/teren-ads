@@ -78,18 +78,25 @@ export class IcecastSource extends EventEmitter {
 
       socket.connect(this.port, this.host, () => {
         const auth = Buffer.from(`source:${this.password}`).toString('base64');
-        // ICE headers — only emit description when non-empty so we don't publish
-        // a literal empty line that could confuse older Icecast implementations.
+        // HTTP headers are nominally latin-1 (ISO-8859-1). Ukrainian text in
+        // stream_description comes out as mojibake when Icecast re-serves it
+        // as UTF-8 (the operator's master on /teren_back_aac renders fine, our
+        // /uman shows `Ð Ñ€Ð¸...`). ice-charset hints to Icecast 2.4.4+ that
+        // the header bytes are already UTF-8 so it won't re-transcode them.
         let headers =
           `SOURCE ${this.mount} HTTP/1.0\r\n` +
           `Authorization: Basic ${auth}\r\n` +
           `Content-Type: audio/mpeg\r\n` +
           `ice-bitrate: 320\r\n` +
           `ice-public: 0\r\n` +
+          `ice-charset: UTF-8\r\n` +
           `ice-name: ${this.iceName}\r\n`;
         if (this.iceDescription) headers += `ice-description: ${this.iceDescription}\r\n`;
         headers += `\r\n`;
-        socket.write(headers);
+        // Force UTF-8 byte serialisation — node's socket.write defaults to
+        // utf8 for strings anyway, but be explicit so a future rewrite
+        // doesn't silently flip to ascii/latin1.
+        socket.write(Buffer.from(headers, 'utf8'));
       });
 
       socket.once('data', (data) => {

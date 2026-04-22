@@ -100,6 +100,7 @@ export const api = {
   getSettings: () => req<Record<string, string>>('GET', '/settings'),
   saveSettings: (data: any) => req<any>('PUT', '/settings', data),
   testTelegram: () => req<{ ok: boolean; error?: string }>('POST', '/settings/telegram/test'),
+  getIcyHealth: () => req<{ lastTriedAt: number | null; lastSuccessAt: number | null; lastStatus: number | null; lastError: string | null }>('GET', '/settings/icy-health'),
 
   // Schedules
   getSchedules: () => req<any[]>('GET', '/schedules'),

@@ -62,8 +62,8 @@ class NowPlayingMirror {
       const mount = rawMount.startsWith('/') ? rawMount : '/' + rawMount;
 
       if (this.lastPushedByMount.get(mount) === title) continue;
-      const ok = await setIcyMetadata(mount, title);
-      if (ok) this.lastPushedByMount.set(mount, title);
+      const result = await setIcyMetadata(mount, title);
+      if (result.ok) this.lastPushedByMount.set(mount, title);
     }
   }
 
