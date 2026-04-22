@@ -30,7 +30,13 @@ const httpUrl: Validator = (raw) => {
 
 const hostname: Validator = (raw) => {
   if (typeof raw !== 'string') return { ok: false, error: 'must be a string' };
-  const s = raw.trim();
+  let s = raw.trim();
+  // Be forgiving: if the operator pastes a full URL (http(s)://host[:port][/path]),
+  // pull the bare hostname out. The field is built around Icecast's host+port
+  // pair, not a full URL, and rejecting a pasted URL just slows them down.
+  if (/^https?:\/\//i.test(s)) {
+    try { s = new URL(s).hostname; } catch { /* fall through to regex error */ }
+  }
   if (!/^[A-Za-z0-9._-]{1,253}$/.test(s)) return { ok: false, error: 'invalid hostname' };
   return { ok: true, value: s };
 };
