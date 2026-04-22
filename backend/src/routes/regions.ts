@@ -68,13 +68,14 @@ router.post('/', async (req, res) => {
     crossfade_sec = 1, crossfade_in_enabled = true, crossfade_out_sec = 0,
     loudnorm_enabled = false, loudnorm_target = -18,
     return_mode = 'signal', return_timer_sec = 0,
+    enabled = true,
   } = req.body;
   const r = await pool.query(
     `INSERT INTO regions(name,slug,icecast_mount,crossfade_sec,crossfade_in_enabled,crossfade_out_sec,
-      loudnorm_enabled,loudnorm_target,return_mode,return_timer_sec)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      loudnorm_enabled,loudnorm_target,return_mode,return_timer_sec,enabled)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
     [name, slug, icecast_mount, crossfade_sec, crossfade_in_enabled, crossfade_out_sec,
-     loudnorm_enabled, loudnorm_target, return_mode, return_timer_sec]
+     loudnorm_enabled, loudnorm_target, return_mode, return_timer_sec, enabled]
   );
   await regionManager.reload();
   res.json(r.rows[0]);
