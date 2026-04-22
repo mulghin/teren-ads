@@ -99,6 +99,18 @@ export default function SettingsPage() {
                 placeholder="hackme" />
             </Field>
           </div>
+          <Field label="Stream name" hint="Показується у статусі Icecast для всіх регіональних mount'ів">
+            <input type="text" className="input"
+              value={settings.stream_name ?? ''}
+              onChange={e => set('stream_name', e.target.value)}
+              placeholder="Region" />
+          </Field>
+          <Field label="Stream description">
+            <input type="text" className="input"
+              value={settings.stream_description ?? ''}
+              onChange={e => set('stream_description', e.target.value)}
+              placeholder="Наприклад: Teren Радіо · регіональна вставка" />
+          </Field>
         </Section>
 
         <Section title="Тональний детектор">

@@ -21,7 +21,9 @@ INSERT INTO settings (key, value) VALUES
   ('silence_duration_sec', '10'),
   ('silence_alerts_enabled', 'true'),
   ('webhook_url', ''),
-  ('webhook_secret', '')
+  ('webhook_secret', ''),
+  ('stream_name', 'Region'),
+  ('stream_description', '')
 ON CONFLICT (key) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS regions (

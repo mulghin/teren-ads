@@ -62,12 +62,14 @@ export class RegionProcess {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  private async buildIcecastArgs(): Promise<{ host: string; port: number; mount: string; password: string }> {
+  private async buildIcecastArgs(): Promise<{ host: string; port: number; mount: string; password: string; iceName: string; iceDescription: string }> {
     const host = await getSetting('icecast_host') || 'localhost';
     const port = parseInt(await getSetting('icecast_port') || '8000');
     const password = await getSetting('icecast_source_password') || 'hackme';
     const mount = this.state.mount.startsWith('/') ? this.state.mount : '/' + this.state.mount;
-    return { host, port, mount, password };
+    const iceName = (await getSetting('stream_name')) || 'Region';
+    const iceDescription = (await getSetting('stream_description')) || '';
+    return { host, port, mount, password, iceName, iceDescription };
   }
 
   private emit() {
@@ -164,8 +166,8 @@ export class RegionProcess {
     }
     this.sourceConnecting = true;
     try {
-      const { host, port, mount, password } = await this.buildIcecastArgs();
-      const src = new IcecastSource(host, port, mount, password);
+      const { host, port, mount, password, iceName, iceDescription } = await this.buildIcecastArgs();
+      const src = new IcecastSource(host, port, mount, password, { iceName, iceDescription });
       await src.connect();
       this.source = src;
 

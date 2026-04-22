@@ -40,13 +40,19 @@ export class IcecastSource extends EventEmitter {
   private lastRelayDataMs = 0;       // watchdog input
   private dataWatchdog: NodeJS.Timeout | null = null;
 
+  private iceName: string;
+  private iceDescription: string;
+
   constructor(
     private host: string,
     private port: number,
     private mount: string,
     private password: string,
+    opts: { iceName?: string; iceDescription?: string } = {},
   ) {
     super();
+    this.iceName = opts.iceName || 'Region';
+    this.iceDescription = opts.iceDescription || '';
     // Prevent unhandled EventEmitter errors from crashing the process
     this.on('error', () => {});
   }
@@ -72,14 +78,18 @@ export class IcecastSource extends EventEmitter {
 
       socket.connect(this.port, this.host, () => {
         const auth = Buffer.from(`source:${this.password}`).toString('base64');
-        socket.write(
+        // ICE headers — only emit description when non-empty so we don't publish
+        // a literal empty line that could confuse older Icecast implementations.
+        let headers =
           `SOURCE ${this.mount} HTTP/1.0\r\n` +
           `Authorization: Basic ${auth}\r\n` +
           `Content-Type: audio/mpeg\r\n` +
           `ice-bitrate: 320\r\n` +
-          `ice-name: Region\r\n` +
-          `\r\n`,
-        );
+          `ice-public: 0\r\n` +
+          `ice-name: ${this.iceName}\r\n`;
+        if (this.iceDescription) headers += `ice-description: ${this.iceDescription}\r\n`;
+        headers += `\r\n`;
+        socket.write(headers);
       });
 
       socket.once('data', (data) => {

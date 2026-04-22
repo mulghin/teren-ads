@@ -70,6 +70,17 @@ const password: Validator = (raw) => {
   return { ok: true, value: raw };
 };
 
+// ICY header strings: single-line, no control chars, reasonable upper bound.
+// Icecast ship these verbatim in stream metadata, so we reject anything that
+// could confuse clients or log readers.
+const icyString = (max: number): Validator => (raw) => {
+  if (typeof raw !== 'string') return { ok: false, error: 'must be a string' };
+  const s = raw.trim();
+  if (s.length > max) return { ok: false, error: `too long (max ${max})` };
+  if (/[\x00-\x1f\x7f]/.test(s)) return { ok: false, error: 'control chars not allowed' };
+  return { ok: true, value: s };
+};
+
 const tgBotToken: Validator = (raw) => {
   if (typeof raw !== 'string') return { ok: false, error: 'must be a string' };
   const s = raw.trim();
@@ -94,6 +105,8 @@ const SETTING_VALIDATORS: Record<string, Validator> = {
   icecast_port: intInRange(1, 65535),
   icecast_source_password: password,
   icecast_admin_password: password,
+  stream_name: icyString(100),
+  stream_description: icyString(256),
   webhook_secret: password,
   tone_start_hz: intInRange(1000, 22000),
   tone_stop_hz: intInRange(1000, 22000),
@@ -179,6 +192,16 @@ router.put('/', async (req, res) => {
         if (rp.state.mode === 'main') {
           rp.startMain().catch(e => console.error('[settings] restartMain failed:', e));
         }
+      }
+    }
+  }
+
+  // ICE header text only takes effect on a fresh SOURCE handshake — restart
+  // the relay for every live region so Icecast picks up the new name/desc.
+  if (changedKeys.has('stream_name') || changedKeys.has('stream_description')) {
+    for (const rp of regionManager.getAll()) {
+      if (rp.state.mode === 'main') {
+        rp.startMain().catch(e => console.error('[settings] restartMain (ice-name) failed:', e));
       }
     }
   }
