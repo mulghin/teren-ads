@@ -1,23 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 
-// Connect to same origin — works in dev (proxied via /socket.io) and production
-// Pass API key if configured (VITE_API_KEY env var)
-const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
-
+// Connect to same origin; browser attaches the session cookie automatically
+// when `withCredentials: true` is set. Backend's socket.io CORS config must
+// allow credentials against the frontend origin.
 let globalSocket: Socket | null = null;
-let globalSocketKey: string | undefined;
 
 function getSocket(): Socket {
-  if (globalSocket && globalSocketKey !== API_KEY) {
-    try { globalSocket.disconnect(); } catch {}
-    globalSocket = null;
-  }
   if (!globalSocket) {
-    globalSocket = io({
-      auth: API_KEY ? { token: API_KEY } : undefined,
-    });
-    globalSocketKey = API_KEY;
+    globalSocket = io({ withCredentials: true });
   }
   return globalSocket;
 }
@@ -26,7 +17,6 @@ export function disconnectSocket() {
   if (globalSocket) {
     try { globalSocket.disconnect(); } catch {}
     globalSocket = null;
-    globalSocketKey = undefined;
   }
 }
 

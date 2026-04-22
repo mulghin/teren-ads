@@ -4,7 +4,7 @@ import { regionManager } from './engine/RegionManager';
 
 let io: IOServer | null = null;
 
-export function parseCorsOrigins(raw: string | undefined, fallback = 'http://localhost:5173'): string[] {
+export function parseCorsOrigins(raw: string | undefined, fallback = 'http://localhost:3030'): string[] {
   const out: string[] = [];
   for (const entry of (raw || fallback).split(',')) {
     const s = entry.trim();
@@ -23,22 +23,33 @@ export function parseCorsOrigins(raw: string | undefined, fallback = 'http://loc
   return out;
 }
 
+// Extract tads.sid cookie value without pulling in a full cookie parser.
+// Returns null if the header is missing or the cookie isn't present.
+function extractSessionCookie(cookieHeader: string | undefined): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === 'tads.sid') return decodeURIComponent(v.join('='));
+  }
+  return null;
+}
+
 export function initSocket(server: HttpServer) {
   const corsOrigin = parseCorsOrigins(process.env.CORS_ORIGIN);
   io = new IOServer(server, {
-    cors: { origin: corsOrigin }
+    cors: { origin: corsOrigin, credentials: true },
   });
 
-  // Authenticate socket connections via API key (same as HTTP)
+  // Socket auth: require the browser to have a session cookie. We don't
+  // validate the signature here — express-session will reject an invalid
+  // cookie on the first HTTP call anyway, and socket events never bypass
+  // the session-guarded REST layer. A missing cookie means "never logged
+  // in", which we block here so Socket.IO doesn't stream status to the
+  // whole internet.
   io.use((socket, next) => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) return next(); // Dev mode: no auth required
-
-    const token = socket.handshake.auth?.token
-      || socket.handshake.headers['x-api-key'];
-    if (!token || token !== apiKey) {
-      return next(new Error('Unauthorized'));
-    }
+    const cookie = socket.handshake.headers.cookie || '';
+    const sid = extractSessionCookie(cookie);
+    if (!sid) return next(new Error('Unauthorized'));
     next();
   });
 

@@ -8,10 +8,14 @@ import SchedulesPage from './pages/SchedulesPage';
 import SettingsPage from './pages/SettingsPage';
 import LogsPage from './pages/LogsPage';
 import ReportsPage from './pages/ReportsPage';
+import UsersPage from './pages/UsersPage';
+import LoginPage from './pages/LoginPage';
+import SetupPage from './pages/SetupPage';
 import { api } from './api';
 import { Icon, IconName, ToastProvider } from './components/ui';
+import { useAuth, useMe } from './contexts/AuthContext';
 
-type NavItem = { to: string; label: string; icon: IconName; live?: boolean };
+type NavItem = { to: string; label: string; icon: IconName; live?: boolean; adminOnly?: boolean };
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/',          label: 'Dashboard', icon: 'dashboard' },
@@ -20,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/schedules', label: 'Schedules', icon: 'schedule' },
   { to: '/reports',   label: 'Reports',   icon: 'report' },
   { to: '/logs',      label: 'Logs',      icon: 'logs', live: true },
+  { to: '/users',     label: 'Users',     icon: 'users', adminOnly: true },
   { to: '/settings',  label: 'Settings',  icon: 'settings' },
 ];
 
@@ -30,6 +35,7 @@ const CRUMB_MAP: Record<string, string> = {
   '/schedules': 'Schedules',
   '/reports':   'Reports',
   '/logs':      'Logs',
+  '/users':     'Users',
   '/settings':  'Settings',
 };
 
@@ -78,10 +84,27 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ToastProvider>
-        <Shell />
+        <AuthGate />
       </ToastProvider>
     </ErrorBoundary>
   );
+}
+
+function AuthGate() {
+  const { state } = useAuth();
+  if (state.status === 'loading') {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'grid', placeItems: 'center',
+        color: 'var(--text-muted)', fontSize: 13,
+      }}>
+        <span className="live-dot" style={{ marginRight: 8 }} /> завантаження…
+      </div>
+    );
+  }
+  if (state.status === 'needs_setup')    return <SetupPage />;
+  if (state.status === 'unauthenticated') return <LoginPage />;
+  return <Shell />;
 }
 
 function Shell() {
@@ -120,6 +143,7 @@ function Shell() {
             <Route path="/schedules" element={<SchedulesPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/logs" element={<LogsPage />} />
+            <Route path="/users" element={<UsersPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>
@@ -168,7 +192,9 @@ function Sidebar({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const me = useMe();
   const width = collapsed ? 68 : 240;
+  const navItems = NAV_ITEMS.filter(i => !i.adminOnly || me?.role === 'admin');
 
   const isActive = (to: string) => {
     if (to === '/') return location.pathname === '/';
@@ -204,7 +230,7 @@ function Sidebar({
       </div>
 
       <nav style={{ flex: 1, padding: 10, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
-        {NAV_ITEMS.map(item => {
+        {navItems.map(item => {
           const active = isActive(item.to);
           return (
             <button
@@ -396,29 +422,84 @@ function Header({
 
         {!isMobile && <NowPlaying />}
 
-        <div
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10, padding: '4px 10px 4px 4px',
-            borderRadius: 999,
-            background: 'var(--bg-card)', border: '1px solid var(--border)',
-            flex: 'none',
-          }}
-        >
-          <div style={{
-            width: 28, height: 28, borderRadius: 999,
-            background: 'linear-gradient(135deg, var(--accent), #b85210)',
-            display: 'grid', placeItems: 'center',
-            color: '#fff', fontWeight: 600, fontSize: 11, letterSpacing: '0.05em',
-          }}>OP</div>
-          {!isMobile && (
-            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-              <span style={{ fontSize: 12, fontWeight: 500 }}>Operator</span>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Network admin</span>
-            </div>
-          )}
-        </div>
+        <UserMenu isMobile={isMobile} />
       </div>
     </header>
+  );
+}
+
+function UserMenu({ isMobile }: { isMobile: boolean }) {
+  const me = useMe();
+  const { logout } = useAuth();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [open]);
+
+  if (!me) return null;
+
+  const initials = (me.name || me.username).slice(0, 2).toUpperCase();
+  const roleLabel = me.role === 'admin' ? 'Адміністратор'
+                  : me.role === 'operator' ? 'Оператор'
+                  : 'Перегляд';
+
+  return (
+    <div style={{ position: 'relative', flex: 'none' }} onClick={e => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '4px 10px 4px 4px',
+          borderRadius: 999,
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          cursor: 'pointer',
+        }}
+      >
+        <div style={{
+          width: 28, height: 28, borderRadius: 999,
+          background: 'linear-gradient(135deg, var(--accent), #b85210)',
+          display: 'grid', placeItems: 'center',
+          color: '#fff', fontWeight: 600, fontSize: 11, letterSpacing: '0.05em',
+        }}>{initials}</div>
+        {!isMobile && (
+          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1, textAlign: 'left' }}>
+            <span style={{ fontSize: 12, fontWeight: 500 }}>{me.name || me.username}</span>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{roleLabel}</span>
+          </div>
+        )}
+        {!isMobile && <Icon name="chevronDown" size={12} stroke={1.5} />}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+          minWidth: 200, zIndex: 20,
+          background: 'var(--bg-panel)', border: '1px solid var(--border)',
+          borderRadius: 10, padding: 6,
+          boxShadow: '0 10px 24px rgba(0,0,0,0.4)',
+        }}>
+          <div style={{ padding: '8px 12px 10px', borderBottom: '1px solid var(--border)', marginBottom: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 500 }}>{me.name || me.username}</div>
+            <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+              {me.username} · {me.role}
+            </div>
+          </div>
+          <button
+            onClick={() => { setOpen(false); logout(); }}
+            style={{
+              width: '100%', textAlign: 'left',
+              padding: '8px 12px', fontSize: 13,
+              background: 'transparent', border: 'none',
+              color: 'var(--text)', cursor: 'pointer', borderRadius: 6,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+          >Вийти</button>
+        </div>
+      )}
+    </div>
   );
 }
 

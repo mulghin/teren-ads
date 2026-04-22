@@ -1,21 +1,70 @@
 const BASE = '/api';
-const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
 
-function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return API_KEY ? { ...extra, 'Authorization': `Bearer ${API_KEY}` } : extra;
-}
-
+// All requests are cookie-authenticated. credentials:'include' lets the
+// session cookie ride along on same-origin fetches (and on cross-origin if
+// the backend's CORS is configured with credentials:true + an explicit
+// origin). Bearer-token auth is gone — replaced by session cookies.
 async function req<T>(method: string, url: string, body?: any): Promise<T> {
   const res = await fetch(BASE + url, {
     method,
-    headers: authHeaders(body ? { 'Content-Type': 'application/json' } : {}),
+    credentials: 'include',
+    headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    // 401 means the session is gone — surface a distinct error so the SPA
+    // can redirect to /login instead of showing a generic failure toast.
+    if (res.status === 401) throw new ApiError('unauthenticated', 401);
+    const text = await res.text().catch(() => '');
+    throw new ApiError(text || `HTTP ${res.status}`, res.status);
+  }
   return res.json();
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export interface Me {
+  username: string;
+  name: string;
+  role: 'admin' | 'operator' | 'viewer';
+  active: boolean;
+  created_at: string | null;
+  last_login: string | null;
+  login_fails: number;
+  locked_until: string | null;
+}
+
 export const api = {
+  // Auth
+  getAuthStatus: () => req<{ needs_setup: boolean }>('GET', '/auth/status'),
+  login: (username: string, password: string) =>
+    req<{ ok: boolean; user: Me }>('POST', '/auth/login', { username, password }),
+  logout: () => req<{ ok: boolean }>('POST', '/auth/logout'),
+  me: () => req<Me>('GET', '/auth/me'),
+  setup: (data: { username: string; password: string; name?: string }) =>
+    req<{ ok: boolean; user: Me }>('POST', '/auth/setup', data),
+
+  // Users (admin only)
+  getUsers: () => req<Me[]>('GET', '/users'),
+  createUser: (data: { username: string; password: string; name?: string; role: string }) =>
+    req<any>('POST', '/users', data),
+  updateUser: (username: string, data: any) =>
+    req<any>('PUT', `/users/${encodeURIComponent(username)}`, data),
+  deleteUser: (username: string) =>
+    req<any>('DELETE', `/users/${encodeURIComponent(username)}`),
+  unlockUser: (username: string) =>
+    req<any>('POST', `/users/${encodeURIComponent(username)}/unlock`),
+  getUserHistory: (username: string) =>
+    req<any[]>('GET', `/users/${encodeURIComponent(username)}/history`),
+  getIpBans: () => req<any[]>('GET', '/users/-/ip-bans'),
+  unbanIp: (ip: string) => req<any>('POST', `/users/-/ip-bans/${encodeURIComponent(ip)}/unban`),
+
   // Regions
   getRegions: () => req<any[]>('GET', '/regions'),
   getRegion: (id: number) => req<any>('GET', `/regions/${id}`),
@@ -83,8 +132,8 @@ export const api = {
   },
   getMediaPlan: () => req<any[]>('GET', '/reports/mediaplan'),
   downloadMediaPlanXlsx: async () => {
-    const res = await fetch(`${BASE}/reports/mediaplan/xlsx`, { headers: authHeaders() });
-    if (!res.ok) throw new Error(await res.text());
+    const res = await fetch(`${BASE}/reports/mediaplan/xlsx`, { credentials: 'include' });
+    if (!res.ok) throw new ApiError(await res.text(), res.status);
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -105,9 +154,9 @@ export async function uploadFiles(playlistId: number, files: File[]): Promise<an
   files.forEach(f => form.append('files', f));
   const res = await fetch(`${BASE}/playlists/${playlistId}/upload`, {
     method: 'POST',
-    body: form,
-    headers: authHeaders(), // no Content-Type — browser sets multipart boundary automatically
+    credentials: 'include',
+    body: form, // no Content-Type — browser sets multipart boundary automatically
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new ApiError(await res.text(), res.status);
   return res.json();
 }

@@ -1,5 +1,6 @@
 import 'express-async-errors';
 import express from 'express';
+import session from 'express-session';
 import http from 'http';
 import cors from 'cors';
 import path from 'path';
@@ -18,32 +19,78 @@ import schedulesRouter from './routes/schedules';
 import logsRouter from './routes/logs';
 import regionSchedulesRouter from './routes/region-schedules';
 import reportsRouter from './routes/reports';
-import { apiAuth } from './middleware/auth';
+import authRouter from './routes/auth';
+import usersRouter from './routes/users';
+import { requireAuth } from './middleware/auth';
+import { makeSameOrigin } from './middleware/csrf';
+import { migrateUsers } from './auth/users';
 
 const PORT = parseInt(process.env.PORT || '4000');
 
+// Fail-fast — a fallback constant would let sessions survive a process
+// restart on any box that shipped without SESSION_SECRET set, silently
+// weakening auth. Generate with: openssl rand -hex 32
+const SESSION_SECRET = process.env.SESSION_SECRET;
+if (!SESSION_SECRET || SESSION_SECRET.length < 32) {
+  console.error('[fatal] SESSION_SECRET env var required (min 32 chars). Refusing to start.');
+  console.error('        Generate one with: openssl rand -hex 32');
+  process.exit(1);
+}
+const SECURE_COOKIES = process.env.SECURE_COOKIES === '1';
+
 async function main() {
   await initDb();
+  migrateUsers();
 
   const app = express();
   const server = http.createServer(app);
 
+  app.set('trust proxy', 1); // behind vite proxy in dev; optional nginx in prod
+
   const corsOrigin = parseCorsOrigins(process.env.CORS_ORIGIN);
-  app.use(cors({ origin: corsOrigin }));
-  app.use(express.json());
+  // credentials:true lets the browser attach the session cookie on cross-
+  // origin fetches. Origin list must be explicit — a reflected CORS origin
+  // with credentials would let any site read our authenticated responses.
+  app.use(cors({ origin: corsOrigin, credentials: true }));
+  app.use(express.json({ limit: '100kb' }));
+  app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
-  app.use('/uploads', apiAuth, express.static(path.join(process.cwd(), 'uploads')));
+  app.use(session({
+    name: 'tads.sid',
+    secret: SESSION_SECRET!,
+    resave: false,
+    saveUninitialized: false,
+    rolling: true,
+    cookie: {
+      httpOnly: true,
+      secure: SECURE_COOKIES,
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000,
+    },
+  }));
 
-  app.use('/api/regions', apiAuth, regionsRouter);
-  app.use('/api/regions/:id/time-schedules', apiAuth, regionSchedulesRouter);
-  app.use('/api/playlists', apiAuth, playlistsRouter);
-  app.use('/api/settings', apiAuth, settingsRouter);
-  app.use('/api/schedules', apiAuth, schedulesRouter);
-  app.use('/api/logs', apiAuth, logsRouter);
-  app.use('/api/reports', apiAuth, reportsRouter);
+  // CSRF belt-and-braces on top of SameSite=strict + credentials-required
+  // CORS. Same-origin dev (via vite proxy) and configured allowed origins
+  // both pass cleanly.
+  app.use(makeSameOrigin(corsOrigin));
+
+  // Auth endpoints (login / logout / me / setup / status) — public.
+  app.use('/api/auth', authRouter);
+
+  // Every other /api route below requires a valid session.
+  app.use('/uploads', requireAuth, express.static(path.join(process.cwd(), 'uploads')));
+
+  app.use('/api/users', requireAuth, usersRouter);
+  app.use('/api/regions', requireAuth, regionsRouter);
+  app.use('/api/regions/:id/time-schedules', requireAuth, regionSchedulesRouter);
+  app.use('/api/playlists', requireAuth, playlistsRouter);
+  app.use('/api/settings', requireAuth, settingsRouter);
+  app.use('/api/schedules', requireAuth, schedulesRouter);
+  app.use('/api/logs', requireAuth, logsRouter);
+  app.use('/api/reports', requireAuth, reportsRouter);
 
   // Status endpoint with Icecast listener counts
-  app.get('/api/status', apiAuth, async (req, res) => {
+  app.get('/api/status', requireAuth, async (req, res) => {
     const regions = regionManager.getStatus();
 
     // Try to fetch listener counts from Icecast
