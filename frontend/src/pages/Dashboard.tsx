@@ -138,7 +138,7 @@ export default function Dashboard() {
         subtitle={`${regions.length} регіонів · керування вставкою реклами в реальному часі`}
         actions={
           <Badge tone={connected ? 'success' : 'error'} dot>
-            {connected ? 'socket.io online' : 'offline'}
+            {connected ? 'teren.fm' : 'offline'}
           </Badge>
         }
       />
