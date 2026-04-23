@@ -137,8 +137,8 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
 
   return (
     <div style={{ padding: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div>
+      <div className="header-bar" style={{ marginBottom: 14, justifyContent: 'space-between' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Плейлисти регіону</h3>
           <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>
             Реклама та філери, прив'язані до цього регіону
@@ -208,13 +208,12 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
             </div>
           ) : (
             <>
-              <div style={{
+              <div className="header-bar" style={{
                 padding: 16, borderBottom: '1px solid var(--border)',
-                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
               }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{selected.name}</h4>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600, wordBreak: 'break-word' }}>{selected.name}</h4>
                     <Badge tone={selected.type === 'ad' ? 'accent' : 'info'}>
                       {selected.type === 'ad' ? 'Реклама' : 'Філер'}
                     </Badge>
@@ -224,7 +223,8 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
                   </div>
                 </div>
 
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={toggleShuffle}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', justifyContent: 'space-between' }} onClick={toggleShuffle}>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Shuffle</span>
                   <div style={{
                     width: 32, height: 18, borderRadius: 999,
                     background: selected.shuffle ? 'var(--accent)' : 'var(--bg-elevated)',
@@ -236,7 +236,6 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
                       transition: 'left 0.15s',
                     }} />
                   </div>
-                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Shuffle</span>
                 </label>
 
                 <input ref={fileRef} type="file" multiple accept="audio/*" style={{ display: 'none' }} onChange={handleUpload} />
@@ -460,8 +459,8 @@ function SchedulesTab({ regionId }: { regionId: number }) {
 
   return (
     <div style={{ padding: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
-        <div>
+      <div className="header-bar" style={{ marginBottom: 14, justifyContent: 'space-between' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Розклад за часом</h3>
           <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)', maxWidth: 620 }}>
             Коли тоновий сигнал приходить у вказаний час ±допуск — автоматично запускається цей плейлист
