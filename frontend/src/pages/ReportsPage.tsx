@@ -77,7 +77,7 @@ export default function ReportsPage() {
         }
       />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
+      <div className="report-filter-bar">
         <Tabs<Tab>
           value={tab}
           onChange={setTab}
@@ -87,13 +87,15 @@ export default function ReportsPage() {
             { value: 'plays',     label: 'Виходи' },
           ]}
         />
-        <div style={{ flex: 1, minWidth: 0 }} className="hide-on-mobile" />
-        <Field label="Від">
-          <input type="date" className="input mobile-fullw" value={from} onChange={e => setFrom(e.target.value)} style={{ width: 150 }} />
-        </Field>
-        <Field label="До">
-          <input type="date" className="input mobile-fullw" value={to} onChange={e => setTo(e.target.value)} style={{ width: 150 }} />
-        </Field>
+        <div className="report-filter-bar__spacer" />
+        <div className="report-filter-bar__dates">
+          <Field label="Від">
+            <input type="date" className="input" value={from} onChange={e => setFrom(e.target.value)} />
+          </Field>
+          <Field label="До">
+            <input type="date" className="input" value={to} onChange={e => setTo(e.target.value)} />
+          </Field>
+        </div>
       </div>
 
       {loading && (
