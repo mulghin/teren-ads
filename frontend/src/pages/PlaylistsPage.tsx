@@ -242,9 +242,8 @@ export default function PlaylistsPage() {
             </div>
           ) : (
             <>
-              <div style={{
+              <div className="header-bar" style={{
                 padding: 20, borderBottom: '1px solid var(--border)',
-                display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
               }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

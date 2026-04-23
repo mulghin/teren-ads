@@ -170,6 +170,47 @@
   .mobile-fullw-field { flex: 1 1 100%; }
 }
 
+/* Form grids — collapse to a single column on phones so inputs don't crush.
+   minmax(0, Xfr) lets tracks shrink below child intrinsic width (dropdown
+   labels like "— оберіть —"), which would otherwise force the grid wider
+   than its container and cause horizontal scroll on mobile. */
+.form-grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.form-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.form-grid-assign { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+@media (max-width: 640px) {
+  .form-grid-2,
+  .form-grid-3,
+  .form-grid-assign { grid-template-columns: 1fr; align-items: stretch; }
+  .form-grid-assign .btn { width: 100%; }
+}
+
+/* Header bar — title + actions row that stacks on mobile so action buttons
+   don't get truncated off the right edge. */
+.header-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .header-bar { flex-direction: column; align-items: stretch; gap: 10px; }
+  .header-bar > * { width: 100%; }
+}
+
+/* Visibility helpers */
+@media (max-width: 640px) {
+  .hide-on-mobile { display: none !important; }
+}
+
+/* Users / IP-ban rows — desktop uses fixed pixel columns, mobile stacks
+   into a vertical card layout. */
+.stack-row {
+  display: grid;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+@media (max-width: 640px) {
+  .stack-row { grid-template-columns: 1fr !important; text-align: left; }
+  .stack-row > *:last-child { justify-self: start; }
+}
+
 /* Modal — on tiny screens, drop default side padding so 560px modal isn't
    crushed to a narrow column. */
 @media (max-width: 600px) {

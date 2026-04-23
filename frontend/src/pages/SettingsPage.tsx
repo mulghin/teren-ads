@@ -90,7 +90,7 @@ export default function SettingsPage() {
               onChange={e => set('backup_source_url', e.target.value)}
               placeholder="http://backup:8000/main" />
           </Field>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+          <div className="form-grid-2">
             <Field label="Icecast хост">
               <input type="text" className="input"
                 value={settings.icecast_host ?? ''}
@@ -104,7 +104,7 @@ export default function SettingsPage() {
                 placeholder="8000" />
             </Field>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-grid-2">
             <Field label="Source password">
               <input type="password" className="input"
                 value={settings.icecast_source_password ?? ''}
@@ -152,7 +152,7 @@ export default function SettingsPage() {
             value={settings.tone_detection_enabled === 'true'}
             onChange={v => set('tone_detection_enabled', v ? 'true' : 'false')}
           />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          <div className="form-grid-3">
             <Field label="Старт, Hz">
               <input type="number" className="input"
                 value={settings.tone_start_hz ?? ''}
@@ -183,7 +183,7 @@ export default function SettingsPage() {
             value={settings.silence_alerts_enabled === 'true'}
             onChange={v => set('silence_alerts_enabled', v ? 'true' : 'false')}
           />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-grid-2">
             <Field label="Поріг тиші, dB">
               <input type="number" className="input"
                 value={settings.silence_threshold_db ?? ''}

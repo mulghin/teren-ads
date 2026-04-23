@@ -113,13 +113,8 @@ export default function UsersPage() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {ipBans.map(r => (
-              <div key={r.ip} style={{
-                display: 'grid',
+              <div key={r.ip} className="stack-row" style={{
                 gridTemplateColumns: '180px 1fr 180px 110px',
-                gap: 12,
-                alignItems: 'center',
-                padding: '8px 10px',
-                borderRadius: 8,
                 background: r.is_banned ? 'rgba(255,59,48,0.06)' : 'transparent',
                 border: '1px solid var(--border)',
                 fontSize: 12,
@@ -269,14 +264,11 @@ export default function UsersPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {history.map((h, i) => (
-              <div key={i} style={{
-                display: 'grid',
+              <div key={i} className="stack-row" style={{
                 gridTemplateColumns: '160px 130px 1fr 100px',
-                gap: 12,
                 padding: '8px 4px',
                 borderTop: i === 0 ? 'none' : '1px solid var(--border)',
                 fontSize: 12,
-                alignItems: 'center',
                 background: h.ok ? 'transparent' : 'rgba(255,59,48,0.04)',
                 borderRadius: 6,
               }}>

@@ -87,7 +87,7 @@ export default function ReportsPage() {
             { value: 'plays',     label: 'Виходи' },
           ]}
         />
-        <div style={{ flex: 1 }} />
+        <div style={{ flex: 1, minWidth: 0 }} className="hide-on-mobile" />
         <Field label="Від">
           <input type="date" className="input mobile-fullw" value={from} onChange={e => setFrom(e.target.value)} style={{ width: 150 }} />
         </Field>

@@ -239,7 +239,7 @@ export default function RegionsPage() {
           <Field label="Icecast mount" required>
             <input className="input" value={form.icecast_mount} onChange={e => f('icecast_mount', e.target.value)} placeholder="/region_east" />
           </Field>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-grid-2">
             <Field label="Crossfade, сек">
               <input
                 type="number" min={0} max={10}

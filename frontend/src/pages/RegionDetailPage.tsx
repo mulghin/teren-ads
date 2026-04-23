@@ -532,7 +532,7 @@ function SchedulesTab({ regionId }: { regionId: number }) {
           <Field label="Назва (опціонально)">
             <input className="input" value={form.label} onChange={e => f('label', e.target.value)} placeholder="Обід, Ранок…" />
           </Field>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-grid-2">
             <Field label="Час запуску" required>
               <input type="time" className="input" value={form.time_hhmm} onChange={e => f('time_hhmm', e.target.value)} />
             </Field>
@@ -669,7 +669,7 @@ function AssignmentsTab({ regionId }: { regionId: number }) {
       </div>
 
       <div className="card" style={{ padding: 16, marginBottom: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.5fr 1fr auto', gap: 12, alignItems: 'end' }}>
+        <div className="form-grid-assign">
           <Field label="Плейлист" required>
             <DropdownSelect
               value={form.playlist_id}
