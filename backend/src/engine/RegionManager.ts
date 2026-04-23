@@ -127,7 +127,9 @@ class RegionManager {
   }
 
   async stop() {
-    await Promise.allSettled([...this.regions.values()].map(rp => rp.stop()));
+    // Process exit path — tear down in-process state only so that `status`
+    // in the DB remains a record of the last live mode for auto-resume.
+    await Promise.allSettled([...this.regions.values()].map(rp => rp.shutdown()));
     this.regions.clear();
   }
 
