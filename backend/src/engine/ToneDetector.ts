@@ -28,7 +28,8 @@ class ToneDetector {
   }
 
   private _startDetectors(sourceUrl: string, startHz: number, stopHz: number, durationSec: number) {
-    const threshold = -30;
+    const threshold = -20;
+    const bandWidth = 50;
 
     // START tone detector
     // Spawn two staggered detectors per tone so reconnects don't create a blind window.
@@ -38,7 +39,7 @@ class ToneDetector {
         '-reconnect', '1', '-reconnect_at_eof', '1', '-reconnect_streamed', '1',
         '-reconnect_delay_max', '1',   // cap reconnect backoff to 1s
         '-i', sourceUrl,
-        '-af', `bandpass=f=${hz}:width_type=h:w=200,silencedetect=n=${threshold}dB:d=${durationSec}`,
+        '-af', `bandpass=f=${hz}:width_type=h:w=${bandWidth},silencedetect=n=${threshold}dB:d=${durationSec}`,
         '-f', 'null', '-',
       ], { stdio: ['ignore', 'ignore', 'pipe'] });
 
