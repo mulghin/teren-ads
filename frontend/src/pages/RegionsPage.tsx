@@ -24,7 +24,9 @@ type Region = {
   name: string;
   slug: string;
   icecast_mount: string;
-  crossfade_sec: number;
+  fade_in_sec: number;
+  fade_in_enabled: boolean;
+  return_fade_in_sec: number;
   return_mode: string;
   return_timer_sec: number;
   enabled: boolean;
@@ -32,7 +34,8 @@ type Region = {
 
 const empty = {
   name: '', slug: '', icecast_mount: '',
-  crossfade_sec: 3, return_mode: 'signal', return_timer_sec: 0, enabled: true,
+  fade_in_sec: 1, fade_in_enabled: true, return_fade_in_sec: 1,
+  return_mode: 'signal', return_timer_sec: 0, enabled: true,
 };
 
 export default function RegionsPage() {
@@ -68,7 +71,9 @@ export default function RegionsPage() {
   const openEdit = (r: Region) => {
     setForm({
       name: r.name, slug: r.slug, icecast_mount: r.icecast_mount,
-      crossfade_sec: r.crossfade_sec, return_mode: r.return_mode,
+      fade_in_sec: r.fade_in_sec, fade_in_enabled: r.fade_in_enabled,
+      return_fade_in_sec: r.return_fade_in_sec,
+      return_mode: r.return_mode,
       return_timer_sec: r.return_timer_sec, enabled: r.enabled,
     });
     setModal(r.id);
@@ -162,7 +167,7 @@ export default function RegionsPage() {
                 <th style={{ width: 36 }}></th>
                 <th>Назва</th>
                 <th>Icecast mount</th>
-                <th>Crossfade</th>
+                <th>Fade-in</th>
                 <th>Повернення</th>
                 <th>Статус</th>
                 <th style={{ width: 120 }}></th>
@@ -190,7 +195,10 @@ export default function RegionsPage() {
                     </div>
                   </td>
                   <td data-label="Mount" className="mono col-muted" style={{ fontSize: 12 }}>{r.icecast_mount}</td>
-                  <td data-label="Crossfade" className="col-muted">{r.crossfade_sec}с</td>
+                  <td data-label="Fade-in" className="col-muted">
+                    {r.fade_in_enabled ? `${r.fade_in_sec}с` : '—'}
+                    <span style={{ color: 'var(--text-muted)' }}> / {r.return_fade_in_sec}с</span>
+                  </td>
                   <td data-label="Повернення" className="col-muted" style={{ fontSize: 12 }}>
                     {RETURN_MODES.find(m => m.value === r.return_mode)?.label}
                     {r.return_mode === 'timer' && ` (${r.return_timer_sec}с)`}
@@ -240,22 +248,36 @@ export default function RegionsPage() {
             <input className="input" value={form.icecast_mount} onChange={e => f('icecast_mount', e.target.value)} placeholder="/region_east" />
           </Field>
           <div className="form-grid-2">
-            <Field label="Crossfade, сек">
+            <Field label="Fade-in реклами, сек">
               <input
                 type="number" min={0} max={10}
                 className="input"
-                value={form.crossfade_sec}
-                onChange={e => f('crossfade_sec', Number(e.target.value))}
+                value={form.fade_in_sec}
+                onChange={e => f('fade_in_sec', Number(e.target.value))}
+                disabled={!form.fade_in_enabled}
               />
             </Field>
-            <Field label="Повернення в ефір">
-              <DropdownSelect
-                value={form.return_mode}
-                onChange={v => f('return_mode', v)}
-                options={RETURN_MODES}
+            <Field label="Fade-in повернення ефіру, сек">
+              <input
+                type="number" min={0} max={10}
+                className="input"
+                value={form.return_fade_in_sec}
+                onChange={e => f('return_fade_in_sec', Number(e.target.value))}
               />
             </Field>
           </div>
+          <Toggle
+            label="Вмикати fade-in на старті реклами"
+            value={form.fade_in_enabled}
+            onChange={v => f('fade_in_enabled', v)}
+          />
+          <Field label="Повернення в ефір">
+            <DropdownSelect
+              value={form.return_mode}
+              onChange={v => f('return_mode', v)}
+              options={RETURN_MODES}
+            />
+          </Field>
           {form.return_mode === 'timer' && (
             <Field label="Таймер, сек">
               <input

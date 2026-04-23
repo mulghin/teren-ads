@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS regions (
   slug VARCHAR(50) UNIQUE NOT NULL,
   icecast_mount VARCHAR(100) NOT NULL,
   status VARCHAR(20) DEFAULT 'stopped',
-  crossfade_sec INT DEFAULT 3,
+  fade_in_sec INT DEFAULT 1,
+  fade_in_enabled BOOLEAN DEFAULT TRUE,
+  return_fade_in_sec INT DEFAULT 1,
   return_mode VARCHAR(20) DEFAULT 'signal',
   return_timer_sec INT DEFAULT 0,
   enabled BOOLEAN DEFAULT TRUE,
@@ -119,8 +121,26 @@ CREATE TABLE IF NOT EXISTS region_schedules (
 );
 
 -- Audio quality per region
+-- Rename legacy columns first (if they still exist from older installs).
 DO $$ BEGIN
-  ALTER TABLE regions ADD COLUMN crossfade_in_enabled BOOLEAN DEFAULT TRUE;
+  ALTER TABLE regions RENAME COLUMN crossfade_sec TO fade_in_sec;
+EXCEPTION WHEN undefined_column THEN NULL; WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE regions RENAME COLUMN crossfade_in_enabled TO fade_in_enabled;
+EXCEPTION WHEN undefined_column THEN NULL; WHEN duplicate_column THEN NULL; END $$;
+
+-- Ensure all columns exist (for any DB older than this schema).
+DO $$ BEGIN
+  ALTER TABLE regions ADD COLUMN fade_in_enabled BOOLEAN DEFAULT TRUE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE regions ADD COLUMN fade_in_sec INT DEFAULT 1;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE regions ADD COLUMN return_fade_in_sec INT DEFAULT 1;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 DO $$ BEGIN

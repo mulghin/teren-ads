@@ -2,12 +2,14 @@ import net from 'net';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 
-type FeedMode = 'main' | 'ad';
+type FeedMode = 'main' | 'ad' | 'bridge';
 
 export interface FeedFileOptions {
-  crossfadeInEnabled: boolean;
-  crossfadeInSec: number;
+  fadeInEnabled: boolean;
+  fadeInSec: number;
   crossfadeOutSec: number;
+  returnFadeInSec: number;
+  returnSourceUrl: string;
   loudnormEnabled: boolean;
   loudnormTarget: number;
   totalDurationSec: number;
@@ -30,6 +32,7 @@ export class IcecastSource extends EventEmitter {
   private relayFailCount = 0;          // persists across proc restarts (local var was resetting each spawn → backup never engaged)
   private relayStderrTail: string[] = []; // ring buffer of last relay stderr lines for diagnostics
   private adProc: ChildProcess | null = null;
+  private bridgeProc: ChildProcess | null = null;
   private mode: FeedMode = 'main';
   private connected = false;
   private stopped = false;
@@ -78,24 +81,20 @@ export class IcecastSource extends EventEmitter {
 
       socket.connect(this.port, this.host, () => {
         const auth = Buffer.from(`source:${this.password}`).toString('base64');
-        // HTTP headers are nominally latin-1 (ISO-8859-1). Ukrainian text in
-        // stream_description comes out as mojibake when Icecast re-serves it
-        // as UTF-8 (the operator's master on /teren_back_aac renders fine, our
-        // /uman shows `Ð Ñ€Ð¸...`). ice-charset hints to Icecast 2.4.4+ that
-        // the header bytes are already UTF-8 so it won't re-transcode them.
+        // Non-ASCII in ice-name / ice-description only renders correctly if
+        // icecast.xml declares `<mount type="default"><charset>UTF-8</charset></mount>`
+        // (or a per-mount entry). Icecast 2.4.4 does not parse `ice-charset`
+        // as a SOURCE header — the server default is ISO-8859-1, so without
+        // that XML config the bytes get transcoded on read and turn to mojibake.
         let headers =
           `SOURCE ${this.mount} HTTP/1.0\r\n` +
           `Authorization: Basic ${auth}\r\n` +
           `Content-Type: audio/mpeg\r\n` +
           `ice-bitrate: 320\r\n` +
           `ice-public: 0\r\n` +
-          `ice-charset: UTF-8\r\n` +
           `ice-name: ${this.iceName}\r\n`;
         if (this.iceDescription) headers += `ice-description: ${this.iceDescription}\r\n`;
         headers += `\r\n`;
-        // Force UTF-8 byte serialisation — node's socket.write defaults to
-        // utf8 for strings anyway, but be explicit so a future rewrite
-        // doesn't silently flip to ascii/latin1.
         socket.write(Buffer.from(headers, 'utf8'));
       });
 
@@ -309,8 +308,8 @@ export class IcecastSource extends EventEmitter {
       if (opts.loudnormEnabled) {
         filters.push(`loudnorm=I=${opts.loudnormTarget}:TP=-1.5:LRA=11`);
       }
-      if (opts.crossfadeInEnabled && opts.crossfadeInSec > 0) {
-        filters.push(`afade=t=in:st=0:d=${opts.crossfadeInSec}`);
+      if (opts.fadeInEnabled && opts.fadeInSec > 0) {
+        filters.push(`afade=t=in:st=0:d=${opts.fadeInSec}`);
       }
       if (opts.crossfadeOutSec > 0 && opts.totalDurationSec > opts.crossfadeOutSec) {
         const outStart = Math.max(0, opts.totalDurationSec - opts.crossfadeOutSec);
@@ -340,9 +339,60 @@ export class IcecastSource extends EventEmitter {
       proc.on('exit', (code, signal) => {
         console.log(`[IcecastSource:${this.mount}] ad exit code=${code} signal=${signal} bytes=${adBytesWritten} socketOk=${this.connected}`);
         if (this.adProc === proc) this.adProc = null;
-        this.mode = 'main';
-        resolve({ finished: signal !== 'SIGKILL' });
+
+        const natural = signal !== 'SIGKILL';
+        const runBridge = natural && !this.stopped && opts.returnFadeInSec > 0 && !!opts.returnSourceUrl;
+
+        if (runBridge) {
+          this._startReturnBridge(opts.returnSourceUrl, opts.returnFadeInSec, () => {
+            resolve({ finished: true });
+          });
+        } else {
+          this.mode = 'main';
+          resolve({ finished: natural });
+        }
       });
+    });
+  }
+
+  /**
+   * Short-lived ffmpeg that reads the live source with an afade=in applied,
+   * writes to the Icecast socket for `fadeSec` seconds, then exits. Relay
+   * keeps running in the background and takes over when we switch mode
+   * back to 'main' after the bridge ends.
+   */
+  private _startReturnBridge(sourceUrl: string, fadeSec: number, done: () => void) {
+    if (this.stopped) { this.mode = 'main'; done(); return; }
+
+    // Give the bridge slightly more runtime than the fade so the ramp is
+    // fully in before we hand off to the relay.
+    const runSec = Math.max(fadeSec + 0.25, 0.5);
+
+    const proc = spawn('ffmpeg', [
+      '-fflags', '+nobuffer',
+      '-flags', 'low_delay',
+      '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '1',
+      '-i', sourceUrl,
+      '-t', runSec.toFixed(2),
+      '-af', `afade=t=in:st=0:d=${fadeSec}`,
+      '-acodec', 'libmp3lame', '-b:a', '320k', '-ar', '48000',
+      '-f', 'mp3',
+      'pipe:1',
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    this.bridgeProc = proc;
+    this.mode = 'bridge';
+
+    console.log(`[IcecastSource:${this.mount}] return-fade-in bridge ${fadeSec}s started`);
+
+    proc.stdout?.on('data', (chunk: Buffer) => this._write(chunk, 'bridge'));
+    proc.stderr?.on('data', () => {}); // drain
+
+    proc.on('exit', () => {
+      if (this.bridgeProc === proc) this.bridgeProc = null;
+      this.mode = 'main';
+      console.log(`[IcecastSource:${this.mount}] return-fade-in bridge done`);
+      done();
     });
   }
 
@@ -350,6 +400,10 @@ export class IcecastSource extends EventEmitter {
     if (this.adProc) {
       this.adProc.kill('SIGKILL');
       this.adProc = null;
+    }
+    if (this.bridgeProc) {
+      this.bridgeProc.kill('SIGKILL');
+      this.bridgeProc = null;
     }
     this.mode = 'main';
   }
@@ -366,6 +420,7 @@ export class IcecastSource extends EventEmitter {
     if (this.dataWatchdog) { clearInterval(this.dataWatchdog); this.dataWatchdog = null; }
     if (this.relayProc) { this.relayProc.kill('SIGKILL'); this.relayProc = null; }
     if (this.adProc) { this.adProc.kill('SIGKILL'); this.adProc = null; }
+    if (this.bridgeProc) { this.bridgeProc.kill('SIGKILL'); this.bridgeProc = null; }
     if (this.socket) { this.connected = false; this.socket.destroy(); this.socket = null; }
     this.removeAllListeners();
   }

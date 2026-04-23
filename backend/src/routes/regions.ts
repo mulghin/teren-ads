@@ -65,16 +65,16 @@ router.post('/', async (req, res) => {
   if (err) return res.status(400).json({ error: err });
   const {
     name, slug, icecast_mount,
-    crossfade_sec = 1, crossfade_in_enabled = true, crossfade_out_sec = 0,
+    fade_in_sec = 1, fade_in_enabled = true, return_fade_in_sec = 1, crossfade_out_sec = 0,
     loudnorm_enabled = false, loudnorm_target = -18,
     return_mode = 'signal', return_timer_sec = 0,
     enabled = true,
   } = req.body;
   const r = await pool.query(
-    `INSERT INTO regions(name,slug,icecast_mount,crossfade_sec,crossfade_in_enabled,crossfade_out_sec,
+    `INSERT INTO regions(name,slug,icecast_mount,fade_in_sec,fade_in_enabled,return_fade_in_sec,crossfade_out_sec,
       loudnorm_enabled,loudnorm_target,return_mode,return_timer_sec,enabled)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-    [name, slug, icecast_mount, crossfade_sec, crossfade_in_enabled, crossfade_out_sec,
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    [name, slug, icecast_mount, fade_in_sec, fade_in_enabled, return_fade_in_sec, crossfade_out_sec,
      loudnorm_enabled, loudnorm_target, return_mode, return_timer_sec, enabled]
   );
   await regionManager.reload();
@@ -91,15 +91,16 @@ router.put('/:id', async (req, res) => {
   const { id } = req.params;
   const {
     name, slug, icecast_mount,
-    crossfade_sec, crossfade_in_enabled, crossfade_out_sec,
+    fade_in_sec, fade_in_enabled, return_fade_in_sec, crossfade_out_sec,
     loudnorm_enabled, loudnorm_target,
     return_mode, return_timer_sec, enabled,
   } = req.body;
   const r = await pool.query(
-    `UPDATE regions SET name=$1,slug=$2,icecast_mount=$3,crossfade_sec=$4,
-     crossfade_in_enabled=$5,crossfade_out_sec=$6,loudnorm_enabled=$7,loudnorm_target=$8,
-     return_mode=$9,return_timer_sec=$10,enabled=$11 WHERE id=$12 RETURNING *`,
-    [name, slug, icecast_mount, crossfade_sec, crossfade_in_enabled, crossfade_out_sec,
+    `UPDATE regions SET name=$1,slug=$2,icecast_mount=$3,fade_in_sec=$4,
+     fade_in_enabled=$5,return_fade_in_sec=$6,crossfade_out_sec=$7,
+     loudnorm_enabled=$8,loudnorm_target=$9,
+     return_mode=$10,return_timer_sec=$11,enabled=$12 WHERE id=$13 RETURNING *`,
+    [name, slug, icecast_mount, fade_in_sec, fade_in_enabled, return_fade_in_sec, crossfade_out_sec,
      loudnorm_enabled, loudnorm_target, return_mode, return_timer_sec, enabled, id]
   );
   if (!r.rows[0]) return res.status(404).json({ error: 'Region not found' });

@@ -17,8 +17,9 @@ export interface RegionState {
   slug: string;
   mount: string;
   mode: RegionMode;
-  crossfadeSec: number;
-  crossfadeInEnabled: boolean;
+  fadeInSec: number;
+  fadeInEnabled: boolean;
+  returnFadeInSec: number;
   crossfadeOutSec: number;
   loudnormEnabled: boolean;
   loudnormTarget: number;
@@ -47,8 +48,9 @@ export class RegionProcess {
       slug: row.slug,
       mount: row.icecast_mount,
       mode: 'stopped',
-      crossfadeSec: row.crossfade_sec ?? 1,
-      crossfadeInEnabled: row.crossfade_in_enabled ?? true,
+      fadeInSec: row.fade_in_sec ?? 1,
+      fadeInEnabled: row.fade_in_enabled ?? true,
+      returnFadeInSec: row.return_fade_in_sec ?? 1,
       crossfadeOutSec: row.crossfade_out_sec ?? 0,
       loudnormEnabled: row.loudnorm_enabled ?? false,
       loudnormTarget: row.loudnorm_target ?? -18,
@@ -349,10 +351,16 @@ export class RegionProcess {
       setIcyMetadata(mount, files[0].filename.replace(/\.[^.]+$/, ''));
 
       const totalDurationSec = files.reduce((sum, f) => sum + (f.duration_sec || 0), 0);
+      // Only run the return-fade-in bridge when we're finishing an ad — not
+      // between filler batches (each filler loop calls feedFile again and we
+      // don't want a fade between music tracks).
+      const isAdPlayback = this.state.mode === 'ad';
       const opts: FeedFileOptions = {
-        crossfadeInEnabled: this.state.crossfadeInEnabled,
-        crossfadeInSec: this.state.crossfadeSec,
+        fadeInEnabled: this.state.fadeInEnabled,
+        fadeInSec: this.state.fadeInSec,
         crossfadeOutSec: this.state.crossfadeOutSec,
+        returnFadeInSec: isAdPlayback ? this.state.returnFadeInSec : 0,
+        returnSourceUrl: isAdPlayback ? (await getSetting('source_url') || '') : '',
         loudnormEnabled: this.state.loudnormEnabled,
         loudnormTarget: this.state.loudnormTarget,
         totalDurationSec,
@@ -446,6 +454,19 @@ export class RegionProcess {
     logEvent('info', '→ ЗУПИНЕНО', this.state.id, this.state.name);
   }
 
+  // In-process teardown with no DB side effect. Used by SIGTERM/SIGINT so that
+  // a process restart doesn't clobber the last-known-live `status` — init()
+  // reads that column to decide which regions to auto-resume on startup.
+  async shutdown() {
+    this.adActive = false;
+    this.cancelReturnTimer();
+    if (this.source) {
+      this.source.stop();
+      this.source = null;
+    }
+    logEvent('info', '→ ЗУПИНЕНО', this.state.id, this.state.name);
+  }
+
   private async getPlaylistFiles(
     playlistId: number,
     shuffle = false,
@@ -478,8 +499,9 @@ export class RegionProcess {
   }
 
   updateConfig(row: any) {
-    this.state.crossfadeSec = row.crossfade_sec ?? this.state.crossfadeSec;
-    this.state.crossfadeInEnabled = row.crossfade_in_enabled ?? this.state.crossfadeInEnabled;
+    this.state.fadeInSec = row.fade_in_sec ?? this.state.fadeInSec;
+    this.state.fadeInEnabled = row.fade_in_enabled ?? this.state.fadeInEnabled;
+    this.state.returnFadeInSec = row.return_fade_in_sec ?? this.state.returnFadeInSec;
     this.state.crossfadeOutSec = row.crossfade_out_sec ?? this.state.crossfadeOutSec;
     this.state.loudnormEnabled = row.loudnorm_enabled ?? this.state.loudnormEnabled;
     this.state.loudnormTarget = row.loudnorm_target ?? this.state.loudnormTarget;
