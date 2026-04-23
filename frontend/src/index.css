@@ -468,7 +468,18 @@
     border-radius: 10px;
     margin-bottom: 8px;
     padding: 8px 12px;
+    position: relative;
   }
+  .tbl tbody td.cell-hide-mobile { display: none !important; }
+  .tbl tbody td.cell-float-tr {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 0 !important;
+    border: none !important;
+    display: block;
+  }
+  .tbl tbody td.cell-float-tr::before { display: none; }
   .tbl tbody td {
     padding: 6px 0 !important;
     border: none !important;

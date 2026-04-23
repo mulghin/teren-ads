@@ -270,8 +270,8 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
                         const isPlaying = playingItem?.id === item.id;
                         return (
                           <tr key={item.id} style={{ background: isPlaying ? 'var(--accent-dim)' : undefined }}>
-                            <td data-label="#" className="col-muted mono" style={{ fontSize: 11 }}>{i + 1}</td>
-                            <td data-label="">
+                            <td className="col-muted mono cell-hide-mobile" style={{ fontSize: 11 }}>{i + 1}</td>
+                            <td className="cell-float-tr">
                               <Button
                                 variant="ghost" size="sm"
                                 icon={isPlaying ? 'stop' : 'play'}

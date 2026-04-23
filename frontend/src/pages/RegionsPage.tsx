@@ -175,7 +175,7 @@ export default function RegionsPage() {
                   onClick={() => navigate(`/regions/${r.id}`)}
                   style={{ cursor: 'pointer' }}
                 >
-                  <td data-label="">
+                  <td className="cell-float-tr">
                     <span
                       className={`live-dot${r.enabled ? '' : ' muted'}`}
                       style={{ width: 8, height: 8 }}
