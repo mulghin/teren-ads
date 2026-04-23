@@ -129,20 +129,20 @@ export default function SchedulesPage() {
                 const times = parseTimes(s);
                 return (
                   <tr key={s.id}>
-                    <td style={{ fontWeight: 500 }}>{s.region_name}</td>
-                    <td className="col-muted">{s.playlist_name}</td>
-                    <td className="col-muted" style={{ fontSize: 12 }}>
+                    <td className="cell-title" style={{ fontWeight: 500 }}>{s.region_name}</td>
+                    <td data-label="Плейлист" className="col-muted">{s.playlist_name}</td>
+                    <td data-label="Дні" className="col-muted" style={{ fontSize: 12 }}>
                       {DAYS.find(d => d.value === s.days)?.label || s.days}
                     </td>
-                    <td className="mono" style={{ fontSize: 12, color: 'var(--accent)' }}>
+                    <td data-label="Час" className="mono" style={{ fontSize: 12, color: 'var(--accent)' }}>
                       {times.join(', ')}
                     </td>
-                    <td>
+                    <td data-label="Статус">
                       <Badge tone={s.enabled ? 'success' : 'neutral'} dot>
                         {s.enabled ? 'активний' : 'вимкнений'}
                       </Badge>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td className="cell-actions" style={{ textAlign: 'right' }}>
                       <Button variant="ghost" size="sm" icon="edit" onClick={() => openEdit(s)} />
                       <Button variant="ghost" size="sm" icon="trash" onClick={() => setConfirm(s.id)} />
                     </td>

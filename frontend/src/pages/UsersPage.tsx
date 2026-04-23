@@ -152,7 +152,7 @@ export default function UsersPage() {
         ) : users.length === 0 ? (
           <div style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>Немає користувачів</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--bg-card)' }}>
                 <Th>Користувач</Th>
@@ -169,17 +169,17 @@ export default function UsersPage() {
                 const role = (ROLES.includes(u.role as Role) ? u.role : 'viewer') as Role;
                 return (
                   <tr key={u.username} style={{ borderTop: '1px solid var(--border)' }}>
-                    <Td>
+                    <Td className="cell-title">
                       <div style={{ fontWeight: 500 }}>
                         {u.name || u.username}
                         {isMe && <span className="mono" style={{ marginLeft: 8, fontSize: 10, color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>(you)</span>}
                       </div>
                       {u.name && <div className="mono" style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{u.username}</div>}
                     </Td>
-                    <Td>
+                    <Td data-label="Роль">
                       <Badge tone={ROLE_TONE[role]}>{role}</Badge>
                     </Td>
-                    <Td>
+                    <Td data-label="Статус">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <Badge tone={u.active ? 'success' : 'neutral'} dot>
                           {u.active ? 'active' : 'disabled'}
@@ -192,12 +192,12 @@ export default function UsersPage() {
                         )}
                       </div>
                     </Td>
-                    <Td>
+                    <Td data-label="Останній вхід">
                       <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                         {fmtDate(u.last_login)}
                       </span>
                     </Td>
-                    <Td align="right">
+                    <Td className="cell-actions" align="right">
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                         {locked && (
                           <Button variant="ghost" size="sm" onClick={async () => {
@@ -300,9 +300,15 @@ function Th({ children, align = 'left' }: { children: React.ReactNode; align?: '
   );
 }
 
-function Td({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'right' }) {
+function Td({ children, align = 'left', className, ...rest }: { children: React.ReactNode; align?: 'left' | 'right'; className?: string; 'data-label'?: string }) {
   return (
-    <td style={{ padding: '12px 14px', textAlign: align, verticalAlign: 'middle' }}>{children}</td>
+    <td
+      className={className}
+      data-label={rest['data-label']}
+      style={{ padding: '12px 14px', textAlign: align, verticalAlign: 'middle' }}
+    >
+      {children}
+    </td>
   );
 }
 

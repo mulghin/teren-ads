@@ -328,8 +328,8 @@ export default function PlaylistsPage() {
                         const isPlaying = playingItem?.id === item.id;
                         return (
                           <tr key={item.id} style={{ background: isPlaying ? 'var(--accent-dim)' : undefined }}>
-                            <td className="col-muted mono" style={{ fontSize: 11 }}>{i + 1}</td>
-                            <td>
+                            <td data-label="#" className="col-muted mono" style={{ fontSize: 11 }}>{i + 1}</td>
+                            <td data-label="">
                               <Button
                                 variant="ghost" size="sm"
                                 icon={isPlaying ? 'stop' : 'play'}
@@ -337,13 +337,13 @@ export default function PlaylistsPage() {
                                 style={isPlaying ? { color: 'var(--accent)' } : undefined}
                               />
                             </td>
-                            <td style={{ fontWeight: 500, color: isPlaying ? 'var(--accent)' : undefined }}>
+                            <td className="cell-title" style={{ fontWeight: 500, color: isPlaying ? 'var(--accent)' : undefined }}>
                               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 460 }} title={item.filename}>
                                 {item.filename}
                               </div>
                             </td>
-                            <td className="col-right col-muted mono" style={{ fontSize: 11 }}>{fmtDur(item.duration_sec)}</td>
-                            <td style={{ textAlign: 'right' }}>
+                            <td data-label="Тривалість" className="col-right col-muted mono" style={{ fontSize: 11 }}>{fmtDur(item.duration_sec)}</td>
+                            <td className="cell-actions" style={{ textAlign: 'right' }}>
                               <Button variant="ghost" size="sm" icon="trash" onClick={() => askDeleteItem(item)} />
                             </td>
                           </tr>

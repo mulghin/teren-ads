@@ -175,32 +175,32 @@ export default function RegionsPage() {
                   onClick={() => navigate(`/regions/${r.id}`)}
                   style={{ cursor: 'pointer' }}
                 >
-                  <td>
+                  <td data-label="">
                     <span
                       className={`live-dot${r.enabled ? '' : ' muted'}`}
                       style={{ width: 8, height: 8 }}
                     />
                   </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <td className="cell-title">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 500 }}>{r.name}</span>
                       <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
                         {r.slug}
                       </span>
                     </div>
                   </td>
-                  <td className="mono col-muted" style={{ fontSize: 12 }}>{r.icecast_mount}</td>
-                  <td className="col-muted">{r.crossfade_sec}с</td>
-                  <td className="col-muted" style={{ fontSize: 12 }}>
+                  <td data-label="Mount" className="mono col-muted" style={{ fontSize: 12 }}>{r.icecast_mount}</td>
+                  <td data-label="Crossfade" className="col-muted">{r.crossfade_sec}с</td>
+                  <td data-label="Повернення" className="col-muted" style={{ fontSize: 12 }}>
                     {RETURN_MODES.find(m => m.value === r.return_mode)?.label}
                     {r.return_mode === 'timer' && ` (${r.return_timer_sec}с)`}
                   </td>
-                  <td>
+                  <td data-label="Статус">
                     <Badge tone={r.enabled ? 'success' : 'neutral'} dot>
                       {r.enabled ? 'активний' : 'вимкнений'}
                     </Badge>
                   </td>
-                  <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
+                  <td className="cell-actions" onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
                     <Button variant="ghost" size="sm" icon="edit" onClick={() => openEdit(r)} aria-label="Редагувати" />
                     <Button variant="ghost" size="sm" icon="trash" onClick={() => setConfirm({ id: r.id, name: r.name })} aria-label="Видалити" />
                   </td>

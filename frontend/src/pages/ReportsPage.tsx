@@ -123,15 +123,15 @@ export default function ReportsPage() {
             <tbody>
               {campaigns.campaigns.map((c: any) => (
                 <tr key={c.playlist_id}>
-                  <td style={{ fontWeight: 500 }}>{c.playlist_name}</td>
-                  <td className="col-right tabular" style={{ color: 'var(--accent)', fontWeight: 600 }}>{c.total_plays || 0}</td>
-                  <td className="col-right tabular" style={{ color: 'var(--success)' }}>{c.completed || 0}</td>
-                  <td className="col-right tabular" style={{ color: 'var(--error)' }}>{c.interrupted || 0}</td>
-                  <td className="col-right col-muted tabular">{fmtDur(c.total_duration_sec)}</td>
-                  <td className="mono col-muted" style={{ fontSize: 11 }}>{fmtDate(c.first_play)}</td>
-                  <td className="mono col-muted" style={{ fontSize: 11 }}>{fmtDate(c.last_play)}</td>
-                  <td className="col-right col-muted">{c.max_plays_per_day > 0 ? c.max_plays_per_day : '∞'}</td>
-                  <td className="col-muted" style={{ fontSize: 11 }}>
+                  <td className="cell-title" style={{ fontWeight: 500 }}>{c.playlist_name}</td>
+                  <td data-label="Виходи" className="col-right tabular" style={{ color: 'var(--accent)', fontWeight: 600 }}>{c.total_plays || 0}</td>
+                  <td data-label="Завершено" className="col-right tabular" style={{ color: 'var(--success)' }}>{c.completed || 0}</td>
+                  <td data-label="Перервано" className="col-right tabular" style={{ color: 'var(--error)' }}>{c.interrupted || 0}</td>
+                  <td data-label="Ефірний час" className="col-right col-muted tabular">{fmtDur(c.total_duration_sec)}</td>
+                  <td data-label="Перший вихід" className="mono col-muted" style={{ fontSize: 11 }}>{fmtDate(c.first_play)}</td>
+                  <td data-label="Останній вихід" className="mono col-muted" style={{ fontSize: 11 }}>{fmtDate(c.last_play)}</td>
+                  <td data-label="Ліміт/день" className="col-right col-muted">{c.max_plays_per_day > 0 ? c.max_plays_per_day : '∞'}</td>
+                  <td data-label="Період" className="col-muted" style={{ fontSize: 11 }}>
                     {c.start_date ? `${c.start_date} → ${c.end_date || '∞'}` : '∞'}
                   </td>
                 </tr>
@@ -161,13 +161,13 @@ export default function ReportsPage() {
             <tbody>
               {regionStats.rows.filter((r: any) => r.date).map((r: any, i: number) => (
                 <tr key={i}>
-                  <td style={{ fontWeight: 500 }}>{r.region_name}</td>
-                  <td className="mono col-muted" style={{ fontSize: 12 }}>{r.date?.slice(0, 10)}</td>
-                  <td className="col-right tabular" style={{ color: 'var(--accent)', fontWeight: 600 }}>{r.plays}</td>
-                  <td className="col-right col-muted tabular">{fmtDur(r.total_sec)}</td>
-                  <td className="col-right tabular" style={{ color: 'var(--info)' }}>{r.tone_plays}</td>
-                  <td className="col-right tabular" style={{ color: 'var(--accent)' }}>{r.api_plays}</td>
-                  <td className="col-right tabular" style={{ color: 'var(--success)' }}>{r.schedule_plays}</td>
+                  <td className="cell-title" style={{ fontWeight: 500 }}>{r.region_name}</td>
+                  <td data-label="Дата" className="mono col-muted" style={{ fontSize: 12 }}>{r.date?.slice(0, 10)}</td>
+                  <td data-label="Виходи" className="col-right tabular" style={{ color: 'var(--accent)', fontWeight: 600 }}>{r.plays}</td>
+                  <td data-label="Ефірний час" className="col-right col-muted tabular">{fmtDur(r.total_sec)}</td>
+                  <td data-label="Тон" className="col-right tabular" style={{ color: 'var(--info)' }}>{r.tone_plays}</td>
+                  <td data-label="API" className="col-right tabular" style={{ color: 'var(--accent)' }}>{r.api_plays}</td>
+                  <td data-label="Планувальник" className="col-right tabular" style={{ color: 'var(--success)' }}>{r.schedule_plays}</td>
                 </tr>
               ))}
               {regionStats.rows.filter((r: any) => r.date).length === 0 && (
@@ -194,14 +194,14 @@ export default function ReportsPage() {
             <tbody>
               {plays.map(p => (
                 <tr key={p.id}>
-                  <td className="mono col-muted" style={{ fontSize: 11 }}>{fmtDate(p.start_time)}</td>
-                  <td style={{ fontWeight: 500 }}>{p.region_name}</td>
-                  <td className="col-muted">{p.playlist_name}</td>
-                  <td>
+                  <td data-label="Час" className="mono col-muted" style={{ fontSize: 11 }}>{fmtDate(p.start_time)}</td>
+                  <td className="cell-title" style={{ fontWeight: 500 }}>{p.region_name}</td>
+                  <td data-label="Плейлист" className="col-muted">{p.playlist_name}</td>
+                  <td data-label="Тригер">
                     <Badge tone={TRIGGER_TONE[p.trigger_type] || 'neutral'}>{p.trigger_type}</Badge>
                   </td>
-                  <td className="col-right col-muted tabular">{fmtDur(p.duration_sec)}</td>
-                  <td>
+                  <td data-label="Тривалість" className="col-right col-muted tabular">{fmtDur(p.duration_sec)}</td>
+                  <td data-label="Статус">
                     <Badge tone={STATUS_TONE[p.status] || 'warn'} dot>{p.status}</Badge>
                   </td>
                 </tr>

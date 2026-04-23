@@ -271,8 +271,8 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
                         const isPlaying = playingItem?.id === item.id;
                         return (
                           <tr key={item.id} style={{ background: isPlaying ? 'var(--accent-dim)' : undefined }}>
-                            <td className="col-muted mono" style={{ fontSize: 11 }}>{i + 1}</td>
-                            <td>
+                            <td data-label="#" className="col-muted mono" style={{ fontSize: 11 }}>{i + 1}</td>
+                            <td data-label="">
                               <Button
                                 variant="ghost" size="sm"
                                 icon={isPlaying ? 'stop' : 'play'}
@@ -280,13 +280,13 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
                                 style={isPlaying ? { color: 'var(--accent)' } : undefined}
                               />
                             </td>
-                            <td style={{ fontWeight: 500, color: isPlaying ? 'var(--accent)' : undefined }}>
+                            <td className="cell-title" style={{ fontWeight: 500, color: isPlaying ? 'var(--accent)' : undefined }}>
                               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360 }} title={item.filename}>
                                 {item.filename}
                               </div>
                             </td>
-                            <td className="col-right col-muted mono" style={{ fontSize: 11 }}>{fmtDur(item.duration_sec)}</td>
-                            <td style={{ textAlign: 'right' }}>
+                            <td data-label="Тривалість" className="col-right col-muted mono" style={{ fontSize: 11 }}>{fmtDur(item.duration_sec)}</td>
+                            <td className="cell-actions" style={{ textAlign: 'right' }}>
                               <Button variant="ghost" size="sm" icon="trash" onClick={() => askDeleteItem(item)} />
                             </td>
                           </tr>
@@ -492,18 +492,18 @@ function SchedulesTab({ regionId }: { regionId: number }) {
             <tbody>
               {schedules.map(s => (
                 <tr key={s.id}>
-                  <td style={{ fontWeight: 500 }}>{s.label || '—'}</td>
-                  <td className="mono" style={{ color: 'var(--accent)', fontWeight: 600 }}>{s.time_hhmm}</td>
-                  <td className="col-muted">±{s.tolerance_minutes} хв</td>
-                  <td className="col-muted" style={{ fontSize: 12 }}>{fmtDays(s.days)}</td>
-                  <td>{s.playlist_name}</td>
-                  <td className="col-muted">{s.filler_playlist_name || '—'}</td>
-                  <td>
+                  <td className="cell-title" style={{ fontWeight: 500 }}>{s.label || '—'}</td>
+                  <td data-label="Час" className="mono" style={{ color: 'var(--accent)', fontWeight: 600 }}>{s.time_hhmm}</td>
+                  <td data-label="Допуск" className="col-muted">±{s.tolerance_minutes} хв</td>
+                  <td data-label="Дні" className="col-muted" style={{ fontSize: 12 }}>{fmtDays(s.days)}</td>
+                  <td data-label="Плейлист">{s.playlist_name}</td>
+                  <td data-label="Філер" className="col-muted">{s.filler_playlist_name || '—'}</td>
+                  <td data-label="Стан">
                     <Badge tone={s.is_active ? 'success' : 'neutral'} dot>
                       {s.is_active ? 'активний' : 'вимкнений'}
                     </Badge>
                   </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className="cell-actions" style={{ textAlign: 'right' }}>
                     <Button variant="ghost" size="sm" icon="edit" onClick={() => openEdit(s)} />
                     <Button variant="ghost" size="sm" icon="trash" onClick={() => setConfirm(s.id)} />
                   </td>
@@ -725,15 +725,15 @@ function AssignmentsTab({ regionId }: { regionId: number }) {
                 const fl = allPlaylists.find((p: any) => p.id === a.filler_playlist_id);
                 return (
                   <tr key={a.id}>
-                    <td style={{ fontWeight: 500 }}>{pl?.name ?? `#${a.playlist_id}`}</td>
-                    <td className="col-muted">{fl?.name ?? '—'}</td>
-                    <td className="col-right tabular">{a.priority}</td>
-                    <td>
+                    <td className="cell-title" style={{ fontWeight: 500 }}>{pl?.name ?? `#${a.playlist_id}`}</td>
+                    <td data-label="Філер" className="col-muted">{fl?.name ?? '—'}</td>
+                    <td data-label="Пріоритет" className="col-right tabular">{a.priority}</td>
+                    <td data-label="Стан">
                       <Badge tone={a.active ? 'success' : 'neutral'} dot>
                         {a.active ? 'активне' : 'вимкнено'}
                       </Badge>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td className="cell-actions" style={{ textAlign: 'right' }}>
                       <Button variant="ghost" size="sm" icon="trash" onClick={() => setConfirm(a.id)} />
                     </td>
                   </tr>

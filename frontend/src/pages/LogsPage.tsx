@@ -115,15 +115,15 @@ export default function LogsPage() {
               <tbody>
                 {adLogs.map(l => (
                   <tr key={l.id}>
-                    <td style={{ fontWeight: 500 }}>{l.region_name || `#${l.region_id}`}</td>
-                    <td className="col-muted" style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td className="cell-title" style={{ fontWeight: 500 }}>{l.region_name || `#${l.region_id}`}</td>
+                    <td data-label="Плейлист" className="col-muted" style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {l.playlist_name || '—'}
                     </td>
-                    <td><Badge tone="neutral">{TRIGGER_LABEL[l.trigger_type] || l.trigger_type}</Badge></td>
-                    <td className="mono col-muted" style={{ fontSize: 11 }}>{fmt(l.start_time)}</td>
-                    <td className="mono col-muted" style={{ fontSize: 11 }}>{fmt(l.end_time)}</td>
-                    <td className="col-right col-muted" style={{ fontSize: 12 }}>{dur(l.start_time, l.end_time)}</td>
-                    <td>
+                    <td data-label="Тригер"><Badge tone="neutral">{TRIGGER_LABEL[l.trigger_type] || l.trigger_type}</Badge></td>
+                    <td data-label="Початок" className="mono col-muted" style={{ fontSize: 11 }}>{fmt(l.start_time)}</td>
+                    <td data-label="Кінець" className="mono col-muted" style={{ fontSize: 11 }}>{fmt(l.end_time)}</td>
+                    <td data-label="Тривалість" className="col-right col-muted" style={{ fontSize: 12 }}>{dur(l.start_time, l.end_time)}</td>
+                    <td data-label="Статус">
                       <Badge tone={STATUS_TONE[l.status] || 'neutral'} dot>
                         {STATUS_LABEL[l.status] || l.status}
                       </Badge>

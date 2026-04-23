@@ -442,6 +442,74 @@
 .tbl .col-right { text-align: right; }
 .tbl .col-muted { color: var(--text-secondary); }
 
+/* Mobile: transform tables into stacked "card per row" layout.
+   Each <td data-label="..."> becomes a key/value row. Tables without
+   data-label attributes still render but without label prefixes. */
+@media (max-width: 640px) {
+  .table-wrap {
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+  }
+  .tbl, .tbl thead, .tbl tbody, .tbl tr, .tbl td, .tbl th { display: block; }
+  .tbl thead { display: none; }
+  .tbl tbody tr {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+  }
+  .tbl tbody td {
+    padding: 6px 0 !important;
+    border: none !important;
+    border-bottom: 1px dashed rgba(255,255,255,0.05) !important;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    text-align: left !important;
+    font-size: 13px;
+    min-height: 22px;
+  }
+  .tbl tbody tr td:last-child { border-bottom: none !important; }
+  .tbl tbody td[data-label]::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 500;
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+  .tbl tbody td.cell-title {
+    font-size: 14px;
+    font-weight: 600;
+    padding: 4px 0 8px !important;
+    margin-bottom: 2px;
+    border-bottom: 1px solid var(--border) !important;
+    display: flex;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .tbl tbody td.cell-title::before { display: none; }
+  .tbl tbody td.cell-actions {
+    justify-content: flex-end;
+    padding-top: 8px !important;
+    border-top: 1px solid var(--border) !important;
+    border-bottom: none !important;
+    margin-top: 2px;
+  }
+  .tbl tbody td.cell-actions::before { display: none; }
+  /* Right-aligned numeric cells keep their right alignment for the VALUE side. */
+  .tbl tbody td.col-right { justify-content: space-between; }
+  /* Allow value text to wrap / ellipsize instead of pushing the card wider. */
+  .tbl tbody td > * { min-width: 0; }
+  .tbl tbody td .col-right { text-align: right; }
+}
+
 /* Glass */
 .glass {
   background: rgba(20,23,30,0.78);
