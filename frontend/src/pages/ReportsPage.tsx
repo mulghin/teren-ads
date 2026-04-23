@@ -66,7 +66,7 @@ export default function ReportsPage() {
   };
 
   return (
-    <div style={{ padding: '0 24px 40px' }}>
+    <div className="page">
       <PageHeader
         title="Звіти"
         subtitle="Аналітика кампаній, регіонів та журнал виходів"
@@ -89,10 +89,10 @@ export default function ReportsPage() {
         />
         <div style={{ flex: 1 }} />
         <Field label="Від">
-          <input type="date" className="input" value={from} onChange={e => setFrom(e.target.value)} style={{ width: 150 }} />
+          <input type="date" className="input mobile-fullw" value={from} onChange={e => setFrom(e.target.value)} style={{ width: 150 }} />
         </Field>
         <Field label="До">
-          <input type="date" className="input" value={to} onChange={e => setTo(e.target.value)} style={{ width: 150 }} />
+          <input type="date" className="input mobile-fullw" value={to} onChange={e => setTo(e.target.value)} style={{ width: 150 }} />
         </Field>
       </div>
 

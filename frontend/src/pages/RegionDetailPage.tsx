@@ -788,7 +788,7 @@ export default function RegionDetailPage() {
   }
 
   return (
-    <div style={{ padding: '0 24px 40px' }}>
+    <div className="page">
       <PageHeader
         title={region.name}
         subtitle={

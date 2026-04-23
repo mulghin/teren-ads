@@ -70,7 +70,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div style={{ padding: '0 24px 40px', maxWidth: 780 }}>
+    <div className="page" style={{ maxWidth: 780 }}>
       <PageHeader
         title="Налаштування"
         subtitle="Потоки, тональний детектор, webhook-інтеграції"

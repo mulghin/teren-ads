@@ -70,7 +70,7 @@ export default function LogsPage() {
   const hasErrors = sysLogs.some(l => l.level === 'error');
 
   return (
-    <div style={{ padding: '0 24px 40px' }}>
+    <div className="page">
       <PageHeader
         title="Логи"
         subtitle="Журнал врізок реклами та події системи"

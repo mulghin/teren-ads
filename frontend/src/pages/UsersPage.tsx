@@ -94,7 +94,7 @@ export default function UsersPage() {
   const bannedCount = ipBans.filter(r => r.is_banned).length;
 
   return (
-    <div style={{ padding: '0 24px 40px', maxWidth: 1060 }}>
+    <div className="page" style={{ maxWidth: 1060 }}>
       <PageHeader
         title="Користувачі"
         subtitle="Управління акаунтами, ролі, IP-бани"

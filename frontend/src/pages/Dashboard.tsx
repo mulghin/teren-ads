@@ -132,7 +132,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={{ padding: '0 24px 40px' }}>
+    <div className="page">
       <PageHeader
         title="Мережевий дашборд"
         subtitle={`${regions.length} регіонів · керування вставкою реклами в реальному часі`}
@@ -143,7 +143,7 @@ export default function Dashboard() {
         }
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
+      <div className="kpi-grid">
         <KpiCard
           label="В ефірі"
           value={`${counts.main} / ${liveRegions.length}`}

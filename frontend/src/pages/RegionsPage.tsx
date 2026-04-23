@@ -103,7 +103,7 @@ export default function RegionsPage() {
   const enabledCount = regions.filter(r => r.enabled).length;
 
   return (
-    <div style={{ padding: '0 24px 40px' }}>
+    <div className="page">
       <PageHeader
         title="Регіони"
         subtitle={`${regions.length} регіонів · ${enabledCount} активних`}
@@ -112,8 +112,8 @@ export default function RegionsPage() {
         }
       />
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', width: 320 }}>
+      <div className="filters-row">
+        <div className="search-box">
           <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
             <Icon name="search" size={14} />
           </span>

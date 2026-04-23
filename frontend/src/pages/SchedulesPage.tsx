@@ -100,7 +100,7 @@ export default function SchedulesPage() {
   const valid = form.region_id && form.playlist_id && form.times.some(t => t.trim());
 
   return (
-    <div style={{ padding: '0 24px 40px' }}>
+    <div className="page">
       <PageHeader
         title="Розклад"
         subtitle={`${schedules.length} записів · автоматичні запуски за часом`}

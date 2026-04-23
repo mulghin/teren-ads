@@ -37,12 +37,14 @@ export default function PlaylistsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [confirm, setConfirm] = useState<null | { title: string; body: string; action: () => void }>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
 
   const loadPlaylists = async () => setPlaylists(await api.getPlaylists());
   const loadItems = async (id: number) => { const p = await api.getPlaylist(id); setItems(p.items || []); };
 
   useEffect(() => { loadPlaylists(); }, []);
-  useEffect(() => { if (selected) loadItems(selected.id); }, [selected?.id]);
+  useEffect(() => { if (selected) loadItems(selected.id); setRenaming(false); }, [selected?.id]);
   useEffect(() => () => { audioRef.current?.pause(); }, []);
 
   const playItem = (item: any) => {
@@ -141,13 +143,34 @@ export default function PlaylistsPage() {
     setPlaylists(prev => prev.map(p => p.id === updated.id ? { ...p, shuffle: updated.shuffle } : p));
   };
 
+  const startRename = () => {
+    setRenameValue(selected?.name || '');
+    setRenaming(true);
+  };
+
+  const commitRename = async () => {
+    if (!renaming) return;
+    const next = renameValue.trim();
+    if (!next || !selected || next === selected.name) { setRenaming(false); return; }
+    try {
+      await api.updatePlaylist(selected.id, { ...selected, name: next });
+      setSelected({ ...selected, name: next });
+      setPlaylists(prev => prev.map(p => p.id === selected.id ? { ...p, name: next } : p));
+      notify({ title: 'Перейменовано', tone: 'success', icon: 'check' });
+    } catch (e: any) {
+      notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const totalDur = items.reduce((s, i) => s + (i.duration_sec || 0), 0);
 
   const adCount = playlists.filter(p => p.type === 'ad').length;
   const fillerCount = playlists.filter(p => p.type === 'filler').length;
 
   return (
-    <div style={{ padding: '0 24px 40px' }}>
+    <div className="page">
       <PageHeader
         title="Плейлисти"
         subtitle={`${playlists.length} плейлистів · ${adCount} реклама · ${fillerCount} філер`}
@@ -225,9 +248,31 @@ export default function PlaylistsPage() {
               }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>
-                      {selected.name}
-                    </h2>
+                    {renaming ? (
+                      <input
+                        className="input"
+                        autoFocus
+                        value={renameValue}
+                        onChange={e => setRenameValue(e.target.value)}
+                        onBlur={commitRename}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+                          if (e.key === 'Escape') setRenaming(false);
+                        }}
+                        style={{ fontSize: 18, fontWeight: 600, height: 'auto', padding: '4px 8px', maxWidth: 360 }}
+                      />
+                    ) : (
+                      <>
+                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>
+                          {selected.name}
+                        </h2>
+                        <Button
+                          variant="ghost" size="sm" icon="edit"
+                          onClick={startRename}
+                          aria-label="Перейменувати"
+                        />
+                      </>
+                    )}
                     <Badge tone={selected.type === 'ad' ? 'accent' : 'info'}>
                       {selected.type === 'ad' ? 'Реклама' : 'Філер'}
                     </Badge>
