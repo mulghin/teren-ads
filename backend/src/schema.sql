@@ -147,6 +147,19 @@ DO $$ BEGIN
   ALTER TABLE regions ADD COLUMN crossfade_out_sec INT DEFAULT 0;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
+-- Transmitter ping target + map coordinates (broadcast coverage map)
+DO $$ BEGIN
+  ALTER TABLE regions ADD COLUMN transmitter_ip TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE regions ADD COLUMN lat DOUBLE PRECISION;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE regions ADD COLUMN lng DOUBLE PRECISION;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
 DO $$ BEGIN
   ALTER TABLE regions ADD COLUMN loudnorm_enabled BOOLEAN DEFAULT FALSE;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;

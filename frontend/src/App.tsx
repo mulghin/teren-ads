@@ -3,6 +3,7 @@ import { Routes, Route, useLocation, useNavigate, matchPath } from 'react-router
 import Dashboard from './pages/Dashboard';
 import RegionsPage from './pages/RegionsPage';
 import RegionDetailPage from './pages/RegionDetailPage';
+import MapPage from './pages/MapPage';
 import PlaylistsPage from './pages/PlaylistsPage';
 import SchedulesPage from './pages/SchedulesPage';
 import SettingsPage from './pages/SettingsPage';
@@ -20,6 +21,7 @@ type NavItem = { to: string; label: string; icon: IconName; live?: boolean; admi
 const NAV_ITEMS: NavItem[] = [
   { to: '/',          label: 'Dashboard', icon: 'dashboard' },
   { to: '/regions',   label: 'Regions',   icon: 'broadcast' },
+  { to: '/map',       label: 'Map',       icon: 'globe' },
   { to: '/playlists', label: 'Playlists', icon: 'playlist' },
   { to: '/schedules', label: 'Schedules', icon: 'schedule' },
   { to: '/reports',   label: 'Reports',   icon: 'report' },
@@ -31,6 +33,7 @@ const NAV_ITEMS: NavItem[] = [
 const CRUMB_MAP: Record<string, string> = {
   '/':          'Dashboard',
   '/regions':   'Regions',
+  '/map':       'Map',
   '/playlists': 'Playlists',
   '/schedules': 'Schedules',
   '/reports':   'Reports',
@@ -139,6 +142,7 @@ function Shell() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/regions" element={<RegionsPage />} />
             <Route path="/regions/:id" element={<RegionDetailPage />} />
+            <Route path="/map" element={<MapPage />} />
             <Route path="/playlists" element={<PlaylistsPage />} />
             <Route path="/schedules" element={<SchedulesPage />} />
             <Route path="/reports" element={<ReportsPage />} />

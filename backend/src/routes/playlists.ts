@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { pool } from '../db';
 import { getAudioDurationInSeconds } from 'get-audio-duration';
+import { requireRole } from '../middleware/auth';
 
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -53,6 +54,10 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024, files: 50 } });
 
 const router = Router();
+
+// GET = any authenticated user (viewer ok); mutations require admin/operator.
+router.use((req, res, next) =>
+  req.method === 'GET' ? next() : requireRole('admin', 'operator')(req, res, next));
 
 async function playlistExists(id: number): Promise<boolean> {
   const r = await pool.query(`SELECT 1 FROM playlists WHERE id=$1`, [id]);

@@ -21,6 +21,24 @@ export async function initDb() {
   console.log('[db] Schema applied');
 }
 
+// One-shot startup sweep: a crash mid-ad leaves ad_logs rows stuck at
+// status='running' (the completed/interrupted UPDATE never fired). Those
+// zombies over-count proof-of-play, so mark them interrupted at boot with a
+// best-effort end_time/duration. Idempotent — once flipped they're skipped.
+export async function reapOrphanAdLogs(): Promise<number> {
+  const res = await pool.query(`
+    UPDATE ad_logs
+    SET status='interrupted',
+        end_time=COALESCE(end_time, start_time),
+        duration_sec=COALESCE(duration_sec, 0)
+    WHERE status='running'
+  `);
+  if (res.rowCount) {
+    console.log(`[db] Reaped ${res.rowCount} orphan 'running' ad_log row(s) -> interrupted`);
+  }
+  return res.rowCount ?? 0;
+}
+
 export async function getSetting(key: string): Promise<string> {
   const res = await pool.query('SELECT value FROM settings WHERE key=$1', [key]);
   return res.rows[0]?.value ?? '';

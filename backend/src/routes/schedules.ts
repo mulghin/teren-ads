@@ -1,8 +1,13 @@
 import { Router } from 'express';
 import { pool } from '../db';
 import { scheduler } from '../engine/Scheduler';
+import { requireRole } from '../middleware/auth';
 
 const router = Router();
+
+// GET = any authenticated user (viewer ok); mutations require admin/operator.
+router.use((req, res, next) =>
+  req.method === 'GET' ? next() : requireRole('admin', 'operator')(req, res, next));
 
 const DAY_TOKEN_RE = /^(sun|mon|tue|wed|thu|fri|sat|[0-6])$/i;
 const TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;

@@ -14,7 +14,13 @@ async function req<T>(method: string, url: string, body?: any): Promise<T> {
   if (!res.ok) {
     // 401 means the session is gone — surface a distinct error so the SPA
     // can redirect to /login instead of showing a generic failure toast.
-    if (res.status === 401) throw new ApiError('unauthenticated', 401);
+    // Also broadcast so AuthProvider flips to unauthenticated even when the
+    // 401 lands on a request mid-session (not just the on-mount refresh).
+    // A plain event (no import of the context) avoids any circular import.
+    if (res.status === 401) {
+      window.dispatchEvent(new Event('auth:unauthorized'));
+      throw new ApiError('unauthenticated', 401);
+    }
     const text = await res.text().catch(() => '');
     throw new ApiError(text || `HTTP ${res.status}`, res.status);
   }
@@ -67,6 +73,7 @@ export const api = {
 
   // Regions
   getRegions: () => req<any[]>('GET', '/regions'),
+  getCoverageMap: () => req<any[]>('GET', '/regions/coverage-map'),
   getRegion: (id: number) => req<any>('GET', `/regions/${id}`),
   createRegion: (data: any) => req<any>('POST', '/regions', data),
   updateRegion: (id: number, data: any) => req<any>('PUT', `/regions/${id}`, data),
@@ -132,8 +139,13 @@ export const api = {
     return req<any[]>('GET', `/reports/plays?${p}`);
   },
   getMediaPlan: () => req<any[]>('GET', '/reports/mediaplan'),
-  downloadMediaPlanXlsx: async () => {
-    const res = await fetch(`${BASE}/reports/mediaplan/xlsx`, { credentials: 'include' });
+  downloadMediaPlanXlsx: async (from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    const res = await fetch(`${BASE}/reports/mediaplan/xlsx${qs ? `?${qs}` : ''}`, { credentials: 'include' });
+    if (res.status === 401) window.dispatchEvent(new Event('auth:unauthorized'));
     if (!res.ok) throw new ApiError(await res.text(), res.status);
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -158,6 +170,7 @@ export async function uploadFiles(playlistId: number, files: File[]): Promise<an
     credentials: 'include',
     body: form, // no Content-Type — browser sets multipart boundary automatically
   });
+  if (res.status === 401) window.dispatchEvent(new Event('auth:unauthorized'));
   if (!res.ok) throw new ApiError(await res.text(), res.status);
   return res.json();
 }

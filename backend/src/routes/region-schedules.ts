@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { pool } from '../db';
+import { requireRole } from '../middleware/auth';
 
 const router = Router({ mergeParams: true });
+
+// GET = any authenticated user (viewer ok); mutations require admin/operator.
+router.use((req, res, next) =>
+  req.method === 'GET' ? next() : requireRole('admin', 'operator')(req, res, next));
 
 const TIME_RE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 const DAYS_RE = /^[1-7]+$/;

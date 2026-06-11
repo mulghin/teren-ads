@@ -6,8 +6,14 @@ import { silenceWatchdog } from '../engine/SilenceWatchdog';
 import { regionManager } from '../engine/RegionManager';
 import { sendTelegramTest } from '../engine/TelegramNotifier';
 import { icyHealth } from '../engine/IcyMetadata';
+import { requireRole } from '../middleware/auth';
 
 const router = Router();
+
+// Settings holds Icecast credentials and other secrets. GET is allowed for any
+// authenticated user (secrets are masked on read); all mutations are admin-only.
+router.use((req, res, next) =>
+  req.method === 'GET' ? next() : requireRole('admin')(req, res, next));
 
 type ValidatorResult = { ok: true; value: string } | { ok: false; error: string };
 type Validator = (raw: unknown) => ValidatorResult;

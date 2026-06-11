@@ -1,17 +1,34 @@
 import { Router } from 'express';
+import net from 'net';
 import { pool } from '../db';
 import { regionManager } from '../engine/RegionManager';
 import { getIO } from '../socket';
+import { transmitterPinger } from '../engine/TransmitterPinger';
+import { requireRole } from '../middleware/auth';
 
 const router = Router();
+
+// GET = any authenticated user (viewer ok); mutations require admin/operator.
+router.use((req, res, next) =>
+  req.method === 'GET' ? next() : requireRole('admin', 'operator')(req, res, next));
 
 const MOUNT_RE = /^\/[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const NAME_RE = /^[^\x00-\x1f\x7f]{1,128}$/;
 
+async function playlistExists(id: number): Promise<boolean> {
+  const r = await pool.query(`SELECT 1 FROM playlists WHERE id=$1`, [id]);
+  return r.rowCount === 1;
+}
+
+function parsePositiveInt(raw: unknown): number | null {
+  const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 function validateRegionInput(body: any, { partial = false } = {}): string | null {
   if (!body || typeof body !== 'object') return 'body must be an object';
-  const { name, slug, icecast_mount } = body;
+  const { name, slug, icecast_mount, transmitter_ip, lat, lng } = body;
   if (name !== undefined) {
     if (typeof name !== 'string' || !NAME_RE.test(name)) return 'invalid name';
   } else if (!partial) return 'name required';
@@ -25,6 +42,25 @@ function validateRegionInput(body: any, { partial = false } = {}): string | null
       return 'invalid icecast_mount (must be /[A-Za-z0-9_-]+)';
     }
   } else if (!partial) return 'icecast_mount required';
+
+  // transmitter_ip: allow empty/null; otherwise must be a valid IPv4/IPv6.
+  if (transmitter_ip !== undefined && transmitter_ip !== null && transmitter_ip !== '') {
+    if (typeof transmitter_ip !== 'string' || net.isIP(transmitter_ip) === 0) {
+      return 'invalid transmitter_ip (must be a valid IPv4/IPv6 address)';
+    }
+  }
+
+  // lat/lng: allow null; otherwise must be numbers within geographic bounds.
+  if (lat !== undefined && lat !== null) {
+    if (typeof lat !== 'number' || !Number.isFinite(lat) || lat < -90 || lat > 90) {
+      return 'invalid lat (must be a number in [-90, 90])';
+    }
+  }
+  if (lng !== undefined && lng !== null) {
+    if (typeof lng !== 'number' || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+      return 'invalid lng (must be a number in [-180, 180])';
+    }
+  }
 
   return null;
 }
@@ -40,6 +76,25 @@ router.get('/', async (req, res) => {
     live: statusMap.get(r.id) || null,
   }));
   res.json(regions);
+});
+
+// GET coverage map (regions with coords + transmitter ping status)
+router.get('/coverage-map', async (_req, res) => {
+  const dbRows = await pool.query(
+    `SELECT id, name, slug, icecast_mount, transmitter_ip, lat, lng, enabled
+     FROM regions
+     WHERE lat IS NOT NULL AND lng IS NOT NULL
+     ORDER BY id`
+  );
+  const liveStatus = regionManager.getStatus();
+  const liveMap = new Map(liveStatus.map(s => [s.id, s]));
+  const pingMap = new Map(transmitterPinger.getAll().map(p => [p.region_id, p]));
+
+  res.json(dbRows.rows.map(r => ({
+    ...r,
+    live: liveMap.get(r.id) || null,
+    transmitter: pingMap.get(r.id) || null,
+  })));
 });
 
 // GET single region
@@ -69,13 +124,15 @@ router.post('/', async (req, res) => {
     loudnorm_enabled = false, loudnorm_target = -18,
     return_mode = 'signal', return_timer_sec = 0,
     enabled = true,
+    transmitter_ip = null, lat = null, lng = null,
   } = req.body;
   const r = await pool.query(
     `INSERT INTO regions(name,slug,icecast_mount,fade_in_sec,fade_in_enabled,return_fade_in_sec,crossfade_out_sec,
-      loudnorm_enabled,loudnorm_target,return_mode,return_timer_sec,enabled)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      loudnorm_enabled,loudnorm_target,return_mode,return_timer_sec,enabled,transmitter_ip,lat,lng)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
     [name, slug, icecast_mount, fade_in_sec, fade_in_enabled, return_fade_in_sec, crossfade_out_sec,
-     loudnorm_enabled, loudnorm_target, return_mode, return_timer_sec, enabled]
+     loudnorm_enabled, loudnorm_target, return_mode, return_timer_sec, enabled,
+     transmitter_ip, lat, lng]
   );
   await regionManager.reload();
   // Broadcast the new row so live clients (dashboard, regions list) update
@@ -94,14 +151,17 @@ router.put('/:id', async (req, res) => {
     fade_in_sec, fade_in_enabled, return_fade_in_sec, crossfade_out_sec,
     loudnorm_enabled, loudnorm_target,
     return_mode, return_timer_sec, enabled,
+    transmitter_ip, lat, lng,
   } = req.body;
   const r = await pool.query(
     `UPDATE regions SET name=$1,slug=$2,icecast_mount=$3,fade_in_sec=$4,
      fade_in_enabled=$5,return_fade_in_sec=$6,crossfade_out_sec=$7,
      loudnorm_enabled=$8,loudnorm_target=$9,
-     return_mode=$10,return_timer_sec=$11,enabled=$12 WHERE id=$13 RETURNING *`,
+     return_mode=$10,return_timer_sec=$11,enabled=$12,
+     transmitter_ip=$13,lat=$14,lng=$15 WHERE id=$16 RETURNING *`,
     [name, slug, icecast_mount, fade_in_sec, fade_in_enabled, return_fade_in_sec, crossfade_out_sec,
-     loudnorm_enabled, loudnorm_target, return_mode, return_timer_sec, enabled, id]
+     loudnorm_enabled, loudnorm_target, return_mode, return_timer_sec, enabled,
+     transmitter_ip, lat, lng, id]
   );
   if (!r.rows[0]) return res.status(404).json({ error: 'Region not found' });
   await regionManager.reload();
@@ -124,7 +184,7 @@ router.delete('/:id', async (req, res) => {
     await regionManager.stopRegion(id);
   } catch (e: any) {
     console.warn(`[regions] stopRegion(${id}) during delete failed: ${e?.message || e}`);
-    if (!force) return res.status(500).json({ error: `stop failed: ${e?.message || e}` });
+    if (!force) return res.status(500).json({ error: 'failed to stop region before delete' });
   }
   await pool.query(`DELETE FROM regions WHERE id=$1`, [id]);
   await regionManager.reload();
@@ -135,10 +195,19 @@ router.delete('/:id', async (req, res) => {
 // POST trigger ad
 router.post('/:id/trigger', async (req, res) => {
   const { id } = req.params;
-  const { playlist_id, filler_playlist_id } = req.body;
-  if (!playlist_id) return res.status(400).json({ error: 'playlist_id required' });
+  const playlist_id = parsePositiveInt(req.body?.playlist_id);
+  if (playlist_id === null) return res.status(400).json({ error: 'playlist_id must be a positive integer' });
+  if (!(await playlistExists(playlist_id))) return res.status(404).json({ error: 'playlist_id not found' });
 
-  await regionManager.triggerAd(parseInt(id), playlist_id, 'api', filler_playlist_id);
+  const fillerRaw = req.body?.filler_playlist_id;
+  let filler_playlist_id: number | null = null;
+  if (fillerRaw !== undefined && fillerRaw !== null && fillerRaw !== '') {
+    filler_playlist_id = parsePositiveInt(fillerRaw);
+    if (filler_playlist_id === null) return res.status(400).json({ error: 'filler_playlist_id must be a positive integer' });
+    if (!(await playlistExists(filler_playlist_id))) return res.status(404).json({ error: 'filler_playlist_id not found' });
+  }
+
+  await regionManager.triggerAd(parseInt(id), playlist_id, 'api', filler_playlist_id ?? undefined);
   res.json({ ok: true });
 });
 
@@ -177,11 +246,24 @@ router.get('/:id/assignments', async (req, res) => {
 });
 
 router.post('/:id/assignments', async (req, res) => {
-  const { playlist_id, filler_playlist_id, priority = 0 } = req.body;
+  const { priority = 0 } = req.body;
+
+  const playlist_id = parsePositiveInt(req.body?.playlist_id);
+  if (playlist_id === null) return res.status(400).json({ error: 'playlist_id must be a positive integer' });
+  if (!(await playlistExists(playlist_id))) return res.status(404).json({ error: 'playlist_id not found' });
+
+  const fillerRaw = req.body?.filler_playlist_id;
+  let filler_playlist_id: number | null = null;
+  if (fillerRaw !== undefined && fillerRaw !== null && fillerRaw !== '') {
+    filler_playlist_id = parsePositiveInt(fillerRaw);
+    if (filler_playlist_id === null) return res.status(400).json({ error: 'filler_playlist_id must be a positive integer' });
+    if (!(await playlistExists(filler_playlist_id))) return res.status(404).json({ error: 'filler_playlist_id not found' });
+  }
+
   const r = await pool.query(
     `INSERT INTO region_assignments(region_id,playlist_id,filler_playlist_id,priority)
      VALUES($1,$2,$3,$4) RETURNING *`,
-    [req.params.id, playlist_id, filler_playlist_id || null, priority]
+    [req.params.id, playlist_id, filler_playlist_id, priority]
   );
   res.json(r.rows[0]);
 });

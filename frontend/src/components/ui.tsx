@@ -4,6 +4,7 @@ import {
   useRef,
   useMemo,
   useCallback,
+  useId,
   useLayoutEffect,
   createContext,
   useContext,
@@ -372,13 +373,16 @@ export function AreaChart({
 }: {
   data: number[]; w?: number; h?: number; color?: string;
 }) {
+  // Stable gradient id: a fresh Math.random() every render churned the
+  // <defs> id and could collide across instances. useId() is render-stable
+  // and unique per component instance.
+  const gid = `areaGrad-${useId().replace(/:/g, '')}`;
   if (!data.length) return null;
   const max = Math.max(...data, 1);
   const stepX = w / Math.max(1, data.length - 1);
   const pts = data.map((v, i) => [i * stepX, h - (v / max) * (h - 12) - 2] as [number, number]);
   const d = pts.map((p, i) => (i === 0 ? `M${p[0]},${p[1]}` : `L${p[0]},${p[1]}`)).join(' ');
   const dFill = d + ` L${w},${h} L0,${h} Z`;
-  const gid = `areaGrad-${Math.random().toString(36).slice(2, 7)}`;
   return (
     <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none" style={{ display: 'block' }}>
       <defs>

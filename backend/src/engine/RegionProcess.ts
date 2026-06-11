@@ -231,17 +231,17 @@ export class RegionProcess {
       this.cancelReturnTimer();
       this.adActive = true;
       this.adTriggerType = triggerType;
-      this.state.mode = 'ad';
+      // NOTE: do NOT set state.mode='ad' yet — a concurrent getStatus()/emit()
+      // between here and a rejected guard would report a phantom ad. Flip to
+      // 'ad' only once we're committed to playing (after the guards below).
 
       if (!(await this.isCampaignActive(playlistId))) {
         this.adActive = false;
-        this.state.mode = 'main';
         return;
       }
 
       if (await this.isFrequencyCapped(playlistId)) {
         this.adActive = false;
-        this.state.mode = 'main';
         return;
       }
 
@@ -249,9 +249,10 @@ export class RegionProcess {
       if (!files.length) {
         await logEvent('warn', `Плейлист #${playlistId} порожній`, this.state.id, this.state.name);
         this.adActive = false;
-        this.state.mode = 'main';
         return;
       }
+
+      this.state.mode = 'ad';
 
       if (this.state.adLogId) await this.logAdEnd(this.state.adLogId, 'interrupted');
       this.state.adLogId = await this.logAdStart(playlistId, triggerType, files.length);
@@ -306,7 +307,10 @@ export class RegionProcess {
     // Iterative loop instead of recursion — prevents stack overflow during long filler play
     while (true) {
       if (!files.length) {
-        if (fillerPlaylistId) {
+        // Only enter the looping filler holding-pattern for tone-triggered ads
+        // (which end on a stop tone). Non-tone triggers have no stop signal, so
+        // looping filler would wedge the region — return to master instead.
+        if (fillerPlaylistId && this.adTriggerType === 'tone') {
           const fillerFiles = await this.getPlaylistFiles(fillerPlaylistId, true);
           if (fillerFiles.length) {
             this.state.mode = 'filler';
@@ -367,13 +371,34 @@ export class RegionProcess {
       };
 
       const adStartTime = Date.now();
-      const { finished } = await src.feedFile(concatPath, opts);
+      // Anti-hang watchdog: feedFile resolves only on the ad ffmpeg `exit` event,
+      // but a corrupt / zero-byte / stuck-read concat can keep ffmpeg alive
+      // forever — wedging the region (adLocked never releases, no further ads,
+      // stuck in ad mode). Previously only `tone` triggers had an upper bound.
+      // Force-kill after a generous ceiling (realtime -re playback should take
+      // ~total duration; allow 1.5x + 30 s slack, min 60 s) so feedFile resolves.
+      const watchdogMs = Math.max(60, totalDurationSec * 1.5 + 30) * 1000;
+      let watchdogFired = false;
+      const playbackWatchdog = setTimeout(() => {
+        watchdogFired = true;
+        logEvent('error', `Зависання відтворення >${Math.round(watchdogMs / 1000)}s — примусове завершення`, this.state.id, this.state.name);
+        src.killAd();
+      }, watchdogMs);
+      let finished = false;
+      try {
+        finished = (await src.feedFile(concatPath, opts)).finished;
+      } finally {
+        clearTimeout(playbackWatchdog);
+      }
       const actualDurationSec = (Date.now() - adStartTime) / 1000;
 
       // Clean up temp file
       try { fs.unlinkSync(concatPath); } catch {}
 
       if (!this.adActive) return;
+      // ffmpeg was force-killed by the watchdog — don't leave the region stuck
+      // in ad mode; recover to master.
+      if (watchdogFired) { await this.returnToMain('timeout'); return; }
       if (!finished) return;
 
       if (this.state.adLogId) {
@@ -392,15 +417,35 @@ export class RegionProcess {
       fireWebhook(adEndPayload);
       sendTelegramNotification(adEndPayload);
 
-      if (this.state.mode === 'filler') {
+      if (this.state.mode === 'filler' && this.adTriggerType !== 'tone') {
+        // Filler is a holding pattern that bridges to the STOP tone. A
+        // scheduled / API / manual ad has no stop tone, so looping filler here
+        // would wedge the region out of 'main' forever (same failure class as
+        // C1). Return to master instead of looping.
+        await this.returnToMain('completed');
+        return;
+      } else if (this.state.mode === 'filler') {
         if (!this.adActive) return;
-        // Loop: get next filler batch
+        // Loop: get next filler batch (tone-triggered ads only — bounded by the
+        // stop tone, with startAd's returnTimer as the safety net).
         const nextFiller = await this.getPlaylistFiles(fillerPlaylistId!, true);
         files = nextFiller; // loop continues
       } else if (this.state.returnMode === 'playlist_end') {
         await this.returnToMain('playlist_end');
         return;
+      } else if (this.state.returnMode === 'signal' && this.adTriggerType !== 'tone') {
+        // 'signal' return mode waits for a STOP tone to end the ad — that only
+        // exists in the tone-driven flow. A scheduled / API / manual ad is NOT
+        // bracketed by tones, so no stop signal will ever come. Return when the
+        // ad audio ends, exactly like playlist_end. WITHOUT this the region stays
+        // stuck mode='ad' forever and handleTone('start') (which filters
+        // mode==='main') excludes it from EVERY future tone insertion — i.e. the
+        // region silently stops taking regional ads after its first scheduled ad.
+        await this.returnToMain('completed');
+        return;
       } else {
+        // tone trigger with signal mode → wait for the stop tone;
+        // timer mode → return timer is armed back in startAd().
         return;
       }
     }
@@ -412,12 +457,16 @@ export class RegionProcess {
 
     this.source?.killAd();
 
+    // If _playFiles already ended this ad naturally it cleared adLogId and
+    // fired its own ad_end. Only this call OWNS the ad-end (and its webhook)
+    // when the log is still open — otherwise we'd double-notify operators.
+    const ownsAdEnd = this.state.adLogId != null;
     if (this.state.adLogId) {
       await this.logAdEnd(this.state.adLogId, reason === 'interrupted' ? 'interrupted' : 'completed');
       this.state.adLogId = null;
     }
 
-    if (reason !== 'playlist_end' && reason !== 'completed') {
+    if (ownsAdEnd && reason !== 'playlist_end' && reason !== 'completed') {
       const returnPayload = {
         event: 'ad_end' as const,
         region_id: this.state.id,

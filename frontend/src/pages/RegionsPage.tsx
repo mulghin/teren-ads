@@ -30,12 +30,16 @@ type Region = {
   return_mode: string;
   return_timer_sec: number;
   enabled: boolean;
+  transmitter_ip: string | null;
+  lat: number | null;
+  lng: number | null;
 };
 
 const empty = {
   name: '', slug: '', icecast_mount: '',
   fade_in_sec: 1, fade_in_enabled: true, return_fade_in_sec: 1,
   return_mode: 'signal', return_timer_sec: 0, enabled: true,
+  transmitter_ip: '', lat: '' as string | number, lng: '' as string | number,
 };
 
 export default function RegionsPage() {
@@ -75,6 +79,8 @@ export default function RegionsPage() {
       return_fade_in_sec: r.return_fade_in_sec,
       return_mode: r.return_mode,
       return_timer_sec: r.return_timer_sec, enabled: r.enabled,
+      transmitter_ip: r.transmitter_ip ?? '',
+      lat: r.lat ?? '', lng: r.lng ?? '',
     });
     setModal(r.id);
   };
@@ -82,8 +88,14 @@ export default function RegionsPage() {
   const save = async () => {
     setSaving(true);
     try {
-      if (modal === 'create') await api.createRegion(form);
-      else await api.updateRegion(modal as number, form);
+      const payload = {
+        ...form,
+        transmitter_ip: form.transmitter_ip?.toString().trim() || null,
+        lat: form.lat === '' || form.lat == null ? null : Number(form.lat),
+        lng: form.lng === '' || form.lng == null ? null : Number(form.lng),
+      };
+      if (modal === 'create') await api.createRegion(payload);
+      else await api.updateRegion(modal as number, payload);
       setModal(null); await load();
       notify({ title: 'Збережено', tone: 'success', icon: 'check' });
     } catch (e: any) {
@@ -271,6 +283,34 @@ export default function RegionsPage() {
             value={form.fade_in_enabled}
             onChange={v => f('fade_in_enabled', v)}
           />
+          <Field label="IP передавача (для мапи покриття)">
+            <input
+              className="input"
+              value={form.transmitter_ip}
+              onChange={e => f('transmitter_ip', e.target.value)}
+              placeholder="31.128.163.32"
+            />
+          </Field>
+          <div className="form-grid-2">
+            <Field label="Широта (lat)">
+              <input
+                type="number" step="0.0001"
+                className="input"
+                value={form.lat}
+                onChange={e => f('lat', e.target.value)}
+                placeholder="51.0481"
+              />
+            </Field>
+            <Field label="Довгота (lng)">
+              <input
+                type="number" step="0.0001"
+                className="input"
+                value={form.lng}
+                onChange={e => f('lng', e.target.value)}
+                placeholder="31.8867"
+              />
+            </Field>
+          </div>
           <Field label="Повернення в ефір">
             <DropdownSelect
               value={form.return_mode}

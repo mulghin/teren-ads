@@ -5,12 +5,13 @@ import http from 'http';
 import cors from 'cors';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { initDb, pool } from './db';
+import { initDb, pool, reapOrphanAdLogs } from './db';
 import { initSocket, parseCorsOrigins } from './socket';
 import { regionManager } from './engine/RegionManager';
 import { toneDetector } from './engine/ToneDetector';
 import { scheduler } from './engine/Scheduler';
 import { silenceWatchdog } from './engine/SilenceWatchdog';
+import { transmitterPinger } from './engine/TransmitterPinger';
 import { nowPlayingMirror } from './engine/NowPlayingMirror';
 import regionsRouter from './routes/regions';
 import playlistsRouter from './routes/playlists';
@@ -40,6 +41,9 @@ const SECURE_COOKIES = process.env.SECURE_COOKIES === '1';
 
 async function main() {
   await initDb();
+  // M1: reap zombie status='running' ad_logs left by a crash mid-ad before
+  // the engine starts logging new plays (no route-mount changes here).
+  await reapOrphanAdLogs();
   migrateUsers();
 
   const app = express();
@@ -189,6 +193,7 @@ async function main() {
   await toneDetector.start();
   await silenceWatchdog.start();
   await nowPlayingMirror.start();
+  transmitterPinger.start();
 }
 
 process.on('uncaughtException', (err) => {
@@ -205,6 +210,7 @@ async function shutdown(signal: string) {
     nowPlayingMirror.stop();
     toneDetector.stop();
     silenceWatchdog.stop();
+    transmitterPinger.stop();
     scheduler.stop();
     await regionManager.stop();
     await pool.end();

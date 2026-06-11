@@ -44,6 +44,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Any API call that 401s mid-session dispatches 'auth:unauthorized'
+  // (see api.ts). Re-run refresh so the session-expired case lands on the
+  // login screen instead of leaving the user on a stale authenticated view.
+  useEffect(() => {
+    const onUnauthorized = () => {
+      setState(prev => (prev.status === 'authenticated' ? { status: 'unauthenticated' } : prev));
+      refresh();
+    };
+    window.addEventListener('auth:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', onUnauthorized);
+  }, [refresh]);
+
   const logout = useCallback(async () => {
     try { await api.logout(); } catch {}
     setState({ status: 'unauthenticated' });

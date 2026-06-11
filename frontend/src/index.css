@@ -613,3 +613,49 @@
   backdrop-filter: blur(18px) saturate(140%);
   border: 1px solid var(--border-strong);
 }
+
+/* Coverage map — tower markers + popup */
+.tower-marker-wrap { background: transparent; border: none; }
+.tower-marker { position: relative; width: 48px; height: 48px; transform-origin: 50% 100%; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45)); }
+.tower-marker svg { display: block; }
+.tower-marker.online .wave-1 { animation: tower-pulse 1.6s ease-out infinite; }
+.tower-marker.online .wave-2 { animation: tower-pulse 1.6s ease-out infinite 0.4s; }
+.tower-marker.online .wave-3 { animation: tower-pulse 1.6s ease-out infinite 0.8s; }
+.tower-marker.offline { filter: drop-shadow(0 2px 4px rgba(239,68,68,0.45)); }
+@keyframes tower-pulse {
+  0%   { opacity: 0.85; transform: scale(0.7); transform-origin: center; }
+  60%  { opacity: 0.35; }
+  100% { opacity: 0;    transform: scale(1.0); transform-origin: center; }
+}
+.tower-marker .wave { transform-box: fill-box; transform-origin: center; }
+
+.tower-popup-wrap .leaflet-popup-content-wrapper {
+  background: rgba(20,23,30,0.96);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 4px 6px;
+}
+.tower-popup-wrap .leaflet-popup-tip {
+  background: rgba(20,23,30,0.96);
+  border: 1px solid var(--border-strong);
+}
+.tower-popup-wrap .leaflet-popup-close-button { color: var(--text-muted); }
+.tower-popup__name {
+  font-size: 14px; font-weight: 600; margin-bottom: 8px;
+  padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+.tower-popup__row {
+  display: flex; justify-content: space-between; gap: 14px;
+  font-size: 12px; padding: 3px 0; align-items: center;
+}
+.tower-popup__row span { color: var(--text-muted); }
+.tower-popup__row code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Leaflet's default light tiles look harsh on a dark UI — a CSS-only
+   filter dims them to fit without needing a separate dark tile provider. */
+.leaflet-tile-pane { filter: brightness(0.85) contrast(0.95); }

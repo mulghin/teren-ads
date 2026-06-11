@@ -40,6 +40,12 @@ export class IcecastSource extends EventEmitter {
   private relaySourceUrl = '';
   private backupSourceUrl = '';
   private usingBackup = false;
+  // While on the backup feed, periodically re-probe the primary. The old code
+  // only returned to primary on a relay exit with Math.random()<0.25 — a stable
+  // backup never exits, so a region could ride the backup for hours/days after
+  // the master recovered. This timer makes failback deterministic.
+  private backupReprobeTimer: NodeJS.Timeout | null = null;
+  private static readonly BACKUP_REPROBE_MS = 5 * 60 * 1000;
   private lastRelayDataMs = 0;       // watchdog input
   private dataWatchdog: NodeJS.Timeout | null = null;
 
@@ -228,6 +234,14 @@ export class IcecastSource extends EventEmitter {
     const url = (useBackup && this.backupSourceUrl) ? this.backupSourceUrl : this.relaySourceUrl;
     this.usingBackup = useBackup && !!this.backupSourceUrl;
 
+    // Deterministic failback: while actually on the backup, periodically force a
+    // primary re-probe; on primary, cancel any pending re-probe.
+    if (this.usingBackup) {
+      this._armBackupReprobe();
+    } else {
+      this._cancelBackupReprobe();
+    }
+
     console.log(`[IcecastSource:${this.mount}] relay starting${this.usingBackup ? ' (BACKUP)' : ''}`);
 
     const proc = spawn('ffmpeg', [
@@ -270,19 +284,48 @@ export class IcecastSource extends EventEmitter {
       this.relayStarting = false;
 
       if (!this.stopped) {
+        // Use the CURRENT intent (this.relayUseBackup), not the spawn-time
+        // captured `useBackup` — the re-probe timer flips relayUseBackup→false
+        // before killing a healthy backup so this restart targets primary.
+        const intendBackup = this.relayUseBackup;
         this.relayFailCount++;
-        const tryBackup = !useBackup && this.relayFailCount >= 3 && !!this.backupSourceUrl;
+        const tryBackup = !intendBackup && this.relayFailCount >= 3 && !!this.backupSourceUrl;
         if (tryBackup) {
           console.log(`[IcecastSource:${this.mount}] primary failed ${this.relayFailCount}x — switching to backup`);
           this.emit('source_switch', { from: this.relaySourceUrl, to: this.backupSourceUrl });
           this.relayFailCount = 0;
           setTimeout(() => this._startRelay(true), 1000);
         } else {
-          const returnToPrimary = useBackup && Math.random() < 0.25;
-          setTimeout(() => this._startRelay(returnToPrimary ? false : useBackup), 2000);
+          // Stay on the current intended feed; return-to-primary is driven
+          // deterministically by the backup re-probe timer, not by chance.
+          setTimeout(() => this._startRelay(intendBackup), 2000);
         }
       }
     });
+  }
+
+  /** While on backup, schedule a forced primary re-probe. */
+  private _armBackupReprobe() {
+    if (this.backupReprobeTimer) return;  // already armed
+    this.backupReprobeTimer = setTimeout(() => {
+      this.backupReprobeTimer = null;
+      if (this.stopped || !this.usingBackup) return;
+      console.log(`[IcecastSource:${this.mount}] backup re-probe — attempting primary`);
+      this.relayFailCount = 0;
+      // Kill the (healthy) backup relay; its exit handler restarts on primary.
+      // If primary is still down it'll fail back to backup after 3 tries.
+      if (this.relayProc) {
+        const p = this.relayProc;
+        this.relayUseBackup = false;
+        p.kill('SIGKILL');
+      } else {
+        this._startRelay(false);
+      }
+    }, IcecastSource.BACKUP_REPROBE_MS);
+  }
+
+  private _cancelBackupReprobe() {
+    if (this.backupReprobeTimer) { clearTimeout(this.backupReprobeTimer); this.backupReprobeTimer = null; }
   }
 
   /** Last N stderr lines from the relay ffmpeg — for diagnostics endpoints. */
@@ -416,6 +459,7 @@ export class IcecastSource extends EventEmitter {
 
   stop() {
     this.stopped = true;
+    this._cancelBackupReprobe();
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     if (this.dataWatchdog) { clearInterval(this.dataWatchdog); this.dataWatchdog = null; }
     if (this.relayProc) { this.relayProc.kill('SIGKILL'); this.relayProc = null; }
