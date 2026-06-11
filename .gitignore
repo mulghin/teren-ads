@@ -3,3 +3,6 @@ dist/
 uploads/
 *.log
 .DS_Store
+
+# Per-install auth state — must never be tracked (overwrites prod accounts on deploy)
+backend/data/
