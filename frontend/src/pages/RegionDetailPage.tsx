@@ -41,6 +41,9 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [confirm, setConfirm] = useState<null | { title: string; body: string; action: () => Promise<void> }>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+  const [fileDrag, setFileDrag] = useState(false);
 
   const loadPlaylists = async () => setPlaylists(await api.getPlaylists(regionId));
   const loadItems = async (id: number) => { const p = await api.getPlaylist(id); setItems(p.items || []); };
@@ -126,6 +129,33 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
     } finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
   };
 
+  const moveItem = async (from: number, to: number) => {
+    if (from === to) return;
+    const next = [...items];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setItems(next);
+    try { await api.reorderItems(selected.id, next.map(it => it.id)); }
+    catch (e: any) {
+      notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
+      await loadItems(selected.id);
+    }
+  };
+
+  const isFileDrag = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
+
+  const dropUpload = async (files: File[]) => {
+    if (!files.length || !selected) return;
+    setUploading(true);
+    try {
+      await uploadFiles(selected.id, files);
+      await loadItems(selected.id); await loadPlaylists();
+      notify({ title: `Завантажено ${files.length} файл(ів)`, tone: 'success', icon: 'check' });
+    } catch (e: any) {
+      notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
+    } finally { setUploading(false); }
+  };
+
   const toggleShuffle = async () => {
     const updated = { ...selected, shuffle: !selected.shuffle };
     await api.updatePlaylist(selected.id, updated);
@@ -194,7 +224,31 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
           )}
         </div>
 
-        <div className="card" style={{ padding: 0, minHeight: 400, display: 'flex', flexDirection: 'column' }}>
+        <div
+          className="card"
+          style={{ padding: 0, minHeight: 400, display: 'flex', flexDirection: 'column', position: 'relative' }}
+          onDragOver={e => { if (selected && isFileDrag(e)) { e.preventDefault(); setFileDrag(true); } }}
+          onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setFileDrag(false); }}
+          onDrop={e => {
+            if (!selected || !isFileDrag(e)) return;
+            e.preventDefault(); setFileDrag(false);
+            const files = Array.from(e.dataTransfer.files).filter(f =>
+              f.type.startsWith('audio/') || /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus)$/i.test(f.name));
+            if (!files.length) { notify({ title: 'Лише аудіофайли', tone: 'error', icon: 'warn' }); return; }
+            dropUpload(files);
+          }}
+        >
+          {fileDrag && selected && (
+            <div style={{
+              position: 'absolute', inset: 6, zIndex: 5, borderRadius: 10,
+              border: '2px dashed var(--accent)', background: 'rgba(255,106,26,0.08)',
+              display: 'grid', placeItems: 'center', pointerEvents: 'none',
+            }}>
+              <div style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 600 }}>
+                Відпустіть, щоб завантажити у «{selected.name}»
+              </div>
+            </div>
+          )}
           {!selected ? (
             <div style={{ padding: '60px 24px', textAlign: 'center', flex: 1, display: 'grid', placeItems: 'center' }}>
               <div>
@@ -269,7 +323,20 @@ function PlaylistsTab({ regionId }: { regionId: number }) {
                       {items.map((item, i) => {
                         const isPlaying = playingItem?.id === item.id;
                         return (
-                          <tr key={item.id} style={{ background: isPlaying ? 'var(--accent-dim)' : undefined }}>
+                          <tr
+                            key={item.id}
+                            draggable
+                            onDragStart={e => { setDragIdx(i); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); }}
+                            onDragOver={e => { if (dragIdx !== null) { e.preventDefault(); setOverIdx(i); } }}
+                            onDrop={e => { if (dragIdx !== null) { e.preventDefault(); moveItem(dragIdx, i); } setDragIdx(null); setOverIdx(null); }}
+                            onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
+                            style={{
+                              background: isPlaying ? 'var(--accent-dim)' : undefined,
+                              opacity: dragIdx === i ? 0.4 : undefined,
+                              boxShadow: overIdx === i && dragIdx !== null && dragIdx !== i ? 'inset 0 2px 0 var(--accent)' : undefined,
+                              cursor: 'grab',
+                            }}
+                          >
                             <td className="col-muted mono cell-hide-mobile" style={{ fontSize: 11 }}>{i + 1}</td>
                             <td className="cell-float-tr">
                               <Button
