@@ -198,3 +198,18 @@ EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE ad_logs ADD COLUMN file_count INT DEFAULT 0;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- Per-creative ("ролик") playout log: one row per file inside an ad block.
+-- started_at is computed at block start from the concat order (block start +
+-- cumulative duration of preceding files) — accurate to within the crossfade.
+CREATE TABLE IF NOT EXISTS ad_play_items (
+  id SERIAL PRIMARY KEY,
+  ad_log_id INT REFERENCES ad_logs(id) ON DELETE CASCADE,
+  region_id INT REFERENCES regions(id) ON DELETE SET NULL,
+  playlist_id INT,
+  filename VARCHAR(500) NOT NULL,
+  started_at TIMESTAMPTZ NOT NULL,
+  duration_sec FLOAT
+);
+CREATE INDEX IF NOT EXISTS idx_ad_play_items_started ON ad_play_items(started_at);
+CREATE INDEX IF NOT EXISTS idx_ad_play_items_adlog ON ad_play_items(ad_log_id);

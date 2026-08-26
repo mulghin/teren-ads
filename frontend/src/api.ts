@@ -139,6 +139,11 @@ export const api = {
     return req<any[]>('GET', `/reports/plays?${p}`);
   },
   getMediaPlan: () => req<any[]>('GET', '/reports/mediaplan'),
+  getTrackReport: (params: { from?: string; to?: string; region_id?: number; q?: string }) => {
+    const p = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== '') p.set(k, String(v)); });
+    return req<any>('GET', `/reports/tracks?${p}`);
+  },
   downloadMediaPlanXlsx: async (from?: string, to?: string) => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);

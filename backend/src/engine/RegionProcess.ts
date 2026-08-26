@@ -91,6 +91,28 @@ export class RegionProcess {
     return res.rows[0].id;
   }
 
+  // Per-creative log rows for the "Ролики" report. Start times are computed
+  // from the concat order; best-effort — a failure here must not stop playback.
+  private async logAdItems(
+    adLogId: number,
+    playlistId: number,
+    files: { filename: string; duration_sec: number }[],
+  ) {
+    try {
+      let offset = 0;
+      for (const f of files) {
+        await pool.query(
+          `INSERT INTO ad_play_items(ad_log_id, region_id, playlist_id, filename, started_at, duration_sec)
+           VALUES($1,$2,$3,$4, NOW() + make_interval(secs => $5), $6)`,
+          [adLogId, this.state.id, playlistId, f.filename, offset, f.duration_sec ?? null],
+        );
+        offset += f.duration_sec || 0;
+      }
+    } catch (e) {
+      console.error(`[region:${this.state.name}] logAdItems failed:`, e);
+    }
+  }
+
   private async logAdEnd(logId: number, status: string, durationSec?: number) {
     await pool.query(
       `UPDATE ad_logs SET end_time=NOW(), status=$1, duration_sec=$2 WHERE id=$3`,
@@ -256,6 +278,7 @@ export class RegionProcess {
 
       if (this.state.adLogId) await this.logAdEnd(this.state.adLogId, 'interrupted');
       this.state.adLogId = await this.logAdStart(playlistId, triggerType, files.length);
+      await this.logAdItems(this.state.adLogId, playlistId, files);
       this.state.currentPlaylist = playlistId;
 
       if (triggerType === 'tone') {

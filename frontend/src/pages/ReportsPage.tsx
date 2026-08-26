@@ -4,6 +4,7 @@ import {
   Badge,
   BadgeTone,
   Button,
+  DropdownSelect,
   PageHeader,
   Tabs,
   useToast,
@@ -18,7 +19,7 @@ const fmtDur = (sec: number) => {
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
 
-type Tab = 'campaigns' | 'regions' | 'plays';
+type Tab = 'campaigns' | 'regions' | 'plays' | 'tracks';
 
 const TRIGGER_TONE: Record<string, BadgeTone> = {
   tone: 'info',
@@ -39,8 +40,14 @@ export default function ReportsPage() {
   const [campaigns, setCampaigns] = useState<any>(null);
   const [regionStats, setRegionStats] = useState<any>(null);
   const [plays, setPlays] = useState<any[]>([]);
+  const [tracks, setTracks] = useState<any>(null);
+  const [regions, setRegions] = useState<any[]>([]);
+  const [trackRegion, setTrackRegion] = useState('');
+  const [trackQ, setTrackQ] = useState('');
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => { api.getRegions().then(setRegions).catch(() => {}); }, []);
 
   useEffect(() => {
     (async () => {
@@ -48,6 +55,7 @@ export default function ReportsPage() {
       try {
         if (tab === 'campaigns')      setCampaigns(await api.getCampaignReport(from, to));
         else if (tab === 'regions')   setRegionStats(await api.getRegionStats(from, to));
+        else if (tab === 'tracks')    setTracks(await api.getTrackReport({ from, to, region_id: trackRegion ? Number(trackRegion) : undefined, q: trackQ }));
         else                          setPlays(await api.getPlayLog({ from, to }));
       } catch (e: any) {
         notify({ title: 'Помилка', body: e?.message, tone: 'error', icon: 'warn' });
@@ -55,7 +63,7 @@ export default function ReportsPage() {
         setLoading(false);
       }
     })();
-  }, [tab, from, to]);
+  }, [tab, from, to, trackRegion, trackQ]);
 
   const downloadXlsx = async () => {
     if (downloading) return;
@@ -85,6 +93,7 @@ export default function ReportsPage() {
             { value: 'campaigns', label: 'Кампанії' },
             { value: 'regions',   label: 'Регіони' },
             { value: 'plays',     label: 'Виходи' },
+            { value: 'tracks',    label: 'Ролики' },
           ]}
         />
         <div className="report-filter-bar__spacer" />
@@ -212,6 +221,107 @@ export default function ReportsPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {!loading && tab === 'tracks' && tracks && (
+        <>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <Field label="Регіон">
+              <DropdownSelect
+                value={trackRegion}
+                onChange={setTrackRegion}
+                options={[
+                  { value: '', label: 'Всі регіони' },
+                  ...regions.map((r: any) => ({ value: String(r.id), label: r.name })),
+                ]}
+              />
+            </Field>
+            <Field label="Пошук за назвою">
+              <input
+                className="input" placeholder="Назва ролика…"
+                defaultValue={trackQ}
+                onKeyDown={e => { if (e.key === 'Enter') setTrackQ((e.target as HTMLInputElement).value); }}
+                onBlur={e => setTrackQ(e.target.value)}
+                style={{ minWidth: 220 }}
+              />
+            </Field>
+          </div>
+
+          <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+            <h4 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 600 }}>Зведення по роликах</h4>
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Ролик</th>
+                    <th className="col-right">Виходів</th>
+                    <th className="col-right">Сумарний час</th>
+                    <th className="col-right">Регіонів</th>
+                    <th>Перший вихід</th>
+                    <th>Останній вихід</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tracks.summary.map((s: any) => (
+                    <tr key={s.filename}>
+                      <td className="cell-title" style={{ fontWeight: 500 }}>
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 380 }} title={s.filename}>{s.filename}</div>
+                      </td>
+                      <td data-label="Виходів" className="col-right tabular" style={{ color: 'var(--accent)', fontWeight: 600 }}>{s.plays}</td>
+                      <td data-label="Сумарний час" className="col-right col-muted tabular">{fmtDur(Number(s.total_sec))}</td>
+                      <td data-label="Регіонів" className="col-right tabular">{s.regions}</td>
+                      <td data-label="Перший вихід" className="mono col-muted" style={{ fontSize: 11 }}>{fmtDate(s.first_play)}</td>
+                      <td data-label="Останній вихід" className="mono col-muted" style={{ fontSize: 11 }}>{fmtDate(s.last_play)}</td>
+                    </tr>
+                  ))}
+                  {tracks.summary.length === 0 && (
+                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>Немає даних за вибраний період (журнал роликів ведеться з 26.08.2026)</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: 16 }}>
+            <h4 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 600 }}>
+              Журнал виходів роликів
+              <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 8 }}>{tracks.rows.length} запис(ів){tracks.rows.length === 2000 ? ' · показано перші 2000, звузь період' : ''}</span>
+            </h4>
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Час виходу</th>
+                    <th>Регіон</th>
+                    <th>Ролик</th>
+                    <th>Плейлист</th>
+                    <th className="col-right">Тривалість</th>
+                    <th>Тригер</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tracks.rows.map((r: any) => (
+                    <tr key={r.id}>
+                      <td data-label="Час" className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{fmtDate(r.started_at)}</td>
+                      <td className="cell-title" style={{ fontWeight: 500 }}>{r.region_name || '—'}</td>
+                      <td data-label="Ролик">
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 340 }} title={r.filename}>{r.filename}</div>
+                      </td>
+                      <td data-label="Плейлист" className="col-muted">{r.playlist_name || '—'}</td>
+                      <td data-label="Тривалість" className="col-right col-muted tabular">{fmtDur(r.duration_sec)}</td>
+                      <td data-label="Тригер">
+                        <Badge tone={TRIGGER_TONE[r.trigger_type] || 'neutral'}>{r.trigger_type || '—'}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                  {tracks.rows.length === 0 && (
+                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>Немає виходів за вибраний період</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

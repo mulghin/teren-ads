@@ -125,6 +125,56 @@ router.get('/plays', async (req, res) => {
   res.json(r.rows);
 });
 
+// Per-creative ("ролик") report: summary per filename + detailed journal.
+// api.started_at is timestamptz — reuse the same TZ conversion as ad_logs.
+router.get('/tracks', async (req, res) => {
+  const { region_id, playlist_id, q } = req.query;
+  const { fromDate, toDate } = resolveRange(req.query.from, req.query.to, 7, 366);
+  const LOCAL_ITEM = `(api.started_at AT TIME ZONE '${REPORT_TZ}')`;
+
+  const conditions: string[] = [
+    `${LOCAL_ITEM} >= $1::date`,
+    `${LOCAL_ITEM} < ($2::date + INTERVAL '1 day')`,
+  ];
+  const params: any[] = [fromDate, toDate];
+  if (region_id)   { conditions.push(`api.region_id=$${params.length + 1}`);   params.push(region_id); }
+  if (playlist_id) { conditions.push(`api.playlist_id=$${params.length + 1}`); params.push(playlist_id); }
+  if (typeof q === 'string' && q.trim()) {
+    conditions.push(`api.filename ILIKE $${params.length + 1}`);
+    params.push('%' + q.trim().replace(/[%_\\]/g, '\\$&') + '%');
+  }
+  const where = conditions.join(' AND ');
+
+  const summary = await pool.query(`
+    SELECT api.filename,
+           COUNT(*) as plays,
+           SUM(api.duration_sec) as total_sec,
+           COUNT(DISTINCT api.region_id) as regions,
+           MIN(api.started_at) as first_play,
+           MAX(api.started_at) as last_play
+    FROM ad_play_items api
+    WHERE ${where}
+    GROUP BY api.filename
+    ORDER BY plays DESC, api.filename
+  `, params);
+
+  const rowsParams = [...params, 2000];
+  const rows = await pool.query(`
+    SELECT api.id, api.filename, api.started_at, api.duration_sec,
+           rg.name as region_name, p.name as playlist_name,
+           al.trigger_type, al.status as block_status
+    FROM ad_play_items api
+    LEFT JOIN regions rg ON rg.id=api.region_id
+    LEFT JOIN playlists p ON p.id=api.playlist_id
+    LEFT JOIN ad_logs al ON al.id=api.ad_log_id
+    WHERE ${where}
+    ORDER BY api.started_at DESC
+    LIMIT $${rowsParams.length}
+  `, rowsParams);
+
+  res.json({ from: fromDate, to: toDate, summary: summary.rows, rows: rows.rows });
+});
+
 // Media plan: schedules + assignments per region
 router.get('/mediaplan', async (req, res) => {
   const regions = await pool.query(`SELECT * FROM regions WHERE enabled=TRUE ORDER BY id`);
